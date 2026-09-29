@@ -1,0 +1,29 @@
+import { Direction, abs, move } from 'farmer';
+
+import * as drone from './drone';
+import { mod } from './utils';
+import * as world from './world';
+
+export function moveTo(x2: number, y2: number): void {
+  const worldEdge = world.getWorldEdge();
+  const worldEdgeHalf = worldEdge / 2;
+
+  const x1 = drone.getX();
+  const y1 = drone.getY();
+
+  const dx = mod(x2 - x1 + worldEdgeHalf, worldEdge) - worldEdgeHalf;
+  const dy = mod(y2 - y1 + worldEdgeHalf, worldEdge) - worldEdgeHalf;
+
+  const xDir = dx > 0 ? Direction.East : Direction.West;
+  const yDir = dy > 0 ? Direction.North : Direction.South;
+
+  const distX = abs(dx);
+  for (let i = 0; i < distX; i++) {
+    move(xDir);
+  }
+
+  const distY = abs(dy);
+  for (let i = 0; i < distY; i++) {
+    move(yDir);
+  }
+}

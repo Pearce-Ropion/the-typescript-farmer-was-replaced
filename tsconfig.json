@@ -8,7 +8,8 @@
     "skipLibCheck": true,
 
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "farmer": ["./src/farmer/index.d.ts"]
     },
 
     /* Bundler mode */
