@@ -1,21 +1,18 @@
 module.exports = {
-  name: "plugin-disable-typescript-compat",
-  factory: (require) => {
-    const { structUtils } = require("@yarnpkg/core");
+  name: 'plugin-disable-typescript-compat',
+  factory: require => {
+    const { structUtils } = require('@yarnpkg/core');
 
     return {
       hooks: {
-        reduceDependency: async (dependency) => {
-          if (structUtils.stringifyIdent(dependency) !== "typescript")
-            return dependency;
+        reduceDependency: async dependency => {
+          if (structUtils.stringifyIdent(dependency) !== 'typescript') return dependency;
 
-          if (!dependency.range.startsWith("patch:"))
-            return dependency;
+          if (!dependency.range.startsWith('patch:')) return dependency;
 
           const source = dependency.range.match(/^patch:([^#]+)/)?.[1];
 
-          if (!source)
-            return dependency;
+          if (!source) return dependency;
 
           return {
             ...dependency,

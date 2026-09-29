@@ -1,6 +1,13 @@
 {
   "name": "ts-farmer-was-replaced",
   "type": "module",
+  "scripts": {
+    "format": "oxfmt",
+    "lint": "oxlint --type-aware",
+    "lint:fix": "oxlint --type-aware --fix",
+    "test": "vitest",
+    "types": "tsc"
+  },
   "devDependencies": {
     "@types/node": "^26.6.3",
     "oxfmt": "^0.71.0",
