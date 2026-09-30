@@ -8,16 +8,7 @@
   },
   "sortImports": {
     "ignoreCase": false,
-    "internalPattern": ["@/"],
     "newlinesBetween": true,
-    "groups": [
-      ["side_effect"],
-      ["builtin"],
-      ["external"],
-      ["internal"],
-      ["parent"],
-      ["sibling"],
-      ["index"]
-    ]
+    "groups": [["side_effect"], ["builtin"], ["external"], ["parent"], ["sibling"], ["index"]]
   }
 }
