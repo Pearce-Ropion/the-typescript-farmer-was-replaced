@@ -1,11 +1,8 @@
-import { ALLOWED_MEMBERS } from '../transpiler/collections.ts';
-import type { CollectionKind } from '../transpiler/collections.ts';
-
-// The AST and the rule context come from oxlint, which doesn't export types for JS plugins.
-// oxlint-disable-next-line typescript/no-explicit-any
-type Node = { type: string; [key: string]: any };
-// oxlint-disable-next-line typescript/no-explicit-any
-type Context = any;
+import { ALLOWED_MEMBERS } from '../../transpiler/collections.ts';
+import type { CollectionKind } from '../../transpiler/collections.ts';
+import { unwrap } from '../utils/ast.ts';
+import { findVariable as findVariableIn, isGlobalReference } from '../utils/scope.ts';
+import type { Context, Node } from '../utils/types.ts';
 
 interface Options {
   array?: string[];
@@ -14,24 +11,8 @@ interface Options {
   statics?: string[];
 }
 
-const WRAPPERS = new Set([
-  'ParenthesizedExpression',
-  'TSAsExpression',
-  'TSSatisfiesExpression',
-  'TSNonNullExpression',
-  'TSTypeAssertion',
-]);
-
 const UNSUPPORTED_COLLECTIONS = new Set(['Map', 'WeakMap', 'WeakSet']);
 const STATIC_OBJECTS = new Set(['Object', 'Array']);
-
-function unwrap(node: Node): Node {
-  let current = node;
-  while (WRAPPERS.has(current.type)) {
-    current = current.expression;
-  }
-  return current;
-}
 
 /**
  * `splice` maps onto the game's `insert(index, value)` and `pop(index)`, so only those two forms can be translated.
@@ -91,17 +72,7 @@ const rule = {
     const kinds = new WeakMap<Node, CollectionKind | null>();
     const resolving = new Set<Node>();
 
-    const findVariable = (identifier: Node) => {
-      let scope = context.sourceCode.getScope(identifier);
-      while (scope) {
-        const variable = scope.set.get(identifier.name);
-        if (variable) {
-          return variable;
-        }
-        scope = scope.upper;
-      }
-      return null;
-    };
+    const findVariable = (identifier: Node) => findVariableIn(context, identifier);
 
     const kindFromType = (type: Node | null | undefined): CollectionKind | undefined => {
       if (!type) {
@@ -245,10 +216,7 @@ const rule = {
       return kind;
     };
 
-    const isGlobal = (identifier: Node) => {
-      const variable = findVariable(identifier);
-      return !variable || variable.defs.length === 0;
-    };
+    const isGlobal = (identifier: Node) => isGlobalReference(context, identifier);
 
     return {
       TSInterfaceDeclaration(node: Node) {
@@ -340,116 +308,4 @@ const rule = {
   },
 };
 
-const NUMBER_CONVERSIONS = new Set(['Number', 'parseInt', 'parseFloat']);
-const NUMBER_STATICS = new Set(['parseInt', 'parseFloat']);
-
-const noNumberConversion = {
-  meta: {
-    type: 'problem' as const,
-    docs: {
-      description:
-        "Reports conversions to a number, since the game's Python has no int() or float().",
-    },
-    messages: {
-      conversion:
-        "'{{name}}' is not supported: the game's Python has no int() or float(). Numbers are already numbers, so the conversion isn't needed. Use String(value) to convert to text.",
-    },
-    schema: [],
-  },
-
-  create(context: Context) {
-    const isGlobal = (identifier: Node) => {
-      let scope = context.sourceCode.getScope(identifier);
-      while (scope) {
-        const variable = scope.set.get(identifier.name);
-        if (variable && variable.defs.length > 0) {
-          return false;
-        }
-        scope = scope.upper;
-      }
-      return true;
-    };
-    const report = (node: Node, name: string) =>
-      context.report({ node, messageId: 'conversion', data: { name } });
-
-    const checkCallee = (node: Node, callee: Node) => {
-      const target = unwrap(callee);
-      if (target.type === 'Identifier' && NUMBER_CONVERSIONS.has(target.name) && isGlobal(target)) {
-        report(node, target.name);
-      } else if (
-        target.type === 'MemberExpression' &&
-        !target.computed &&
-        target.object.type === 'Identifier' &&
-        target.object.name === 'Number' &&
-        target.property.type === 'Identifier' &&
-        NUMBER_STATICS.has(target.property.name) &&
-        isGlobal(target.object)
-      ) {
-        report(node, `Number.${target.property.name}`);
-      }
-    };
-
-    return {
-      CallExpression: (node: Node) => checkCallee(node, node.callee),
-      NewExpression: (node: Node) => checkCallee(node, node.callee),
-      UnaryExpression(node: Node) {
-        // `+value` is JavaScript's shortest way to convert to a number.
-        if (node.operator === '+') {
-          report(node, '+value');
-        }
-      },
-    };
-  },
-};
-
-const noClasses = {
-  meta: {
-    type: 'problem' as const,
-    docs: { description: "Reports classes, which the game's Python doesn't have." },
-    messages: {
-      class:
-        "Classes are not supported in the game's Python. Use functions and plain objects instead.",
-    },
-    schema: [],
-  },
-
-  create(context: Context) {
-    const report = (node: Node) => context.report({ node, messageId: 'class' });
-    return { ClassDeclaration: report, ClassExpression: report };
-  },
-};
-
-const noLambdas = {
-  meta: {
-    type: 'problem' as const,
-    docs: {
-      description:
-        "Reports arrow functions and function expressions, which the game's Python doesn't have.",
-    },
-    messages: {
-      lambda:
-        "Lambdas and function expressions are not supported in the game's Python. Declare a named function instead.",
-    },
-    schema: [],
-  },
-
-  create(context: Context) {
-    const report = (node: Node) => {
-      // The class itself is reported by no-classes, so its methods aren't lambdas as well.
-      if (node.parent?.type !== 'MethodDefinition') {
-        context.report({ node, messageId: 'lambda' });
-      }
-    };
-    return { ArrowFunctionExpression: report, FunctionExpression: report };
-  },
-};
-
-export default {
-  meta: { name: 'farm' },
-  rules: {
-    'no-classes': noClasses,
-    'no-lambdas': noLambdas,
-    'no-number-conversion': noNumberConversion,
-    'no-unsupported-collection-member': rule,
-  },
-};
+export default rule;

@@ -1,22 +1,13 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": [
-    "typescript",
-    "unicorn",
-    "oxc",
-    "import"
-  ],
+  "plugins": ["typescript", "unicorn", "oxc", "import"],
   "env": {
     "builtin": true
   },
-  "jsPlugins": [
-    "./scripts/oxlint/farm-plugin.ts"
-  ],
+  "jsPlugins": ["./scripts/oxlint/index.ts"],
   "overrides": [
     {
-      "files": [
-        "src/**/*.ts"
-      ],
+      "files": ["src/**/*.ts"],
       "rules": {
         "farm/no-unsupported-collection-member": "error",
         "farm/no-classes": "error",

@@ -1,15 +1,5 @@
-import { RuleTester } from 'oxlint/plugins-dev';
-import { describe, it } from 'vitest';
-
-import plugin from './farm-plugin.ts';
-
-RuleTester.describe = describe;
-RuleTester.it = it;
-
-const tester = new RuleTester();
-const rule = plugin.rules['no-unsupported-collection-member'];
-
-const ts = (code: string) => ({ code, filename: 'farm.ts' });
+import { tester, ts } from '../../utils/testing.ts';
+import rule from '../no-unsupported-collection-member.ts';
 
 tester.run('no-unsupported-collection-member', rule, {
   valid: [
@@ -120,72 +110,5 @@ tester.run('no-unsupported-collection-member', rule, {
       options: [{ array: ['push'] }],
       errors: [{ messageId: 'member' }],
     },
-  ],
-});
-
-tester.run('no-classes', plugin.rules['no-classes'], {
-  valid: [ts('function f() { return { a: 1 }; }'), ts('const o = { a: 1 }; o.a = 2;')],
-  invalid: [
-    { ...ts('class A {}'), errors: [{ messageId: 'class' }] },
-    { ...ts('const B = class {};'), errors: [{ messageId: 'class' }] },
-    { ...ts('export class C extends Object { m() {} }'), errors: [{ messageId: 'class' }] },
-  ],
-});
-
-tester.run('no-lambdas', plugin.rules['no-lambdas'], {
-  valid: [
-    ts('function f(a: number) { return a; }'),
-    ts('export function g() { return 1; }'),
-    ts('function h() { for (const x of [1]) { x; } }'),
-    // Methods of a class are left to no-classes.
-    ts('class A { m() { return 1; } }'),
-  ],
-  invalid: [
-    { ...ts('const f = () => 1;'), errors: [{ messageId: 'lambda' }] },
-    { ...ts('const f = function () {};'), errors: [{ messageId: 'lambda' }] },
-    {
-      ...ts('[1].includes(1); run(() => 1); function run(f: () => number) { f(); }'),
-      errors: [{ messageId: 'lambda' }],
-    },
-    { ...ts('const o = { m() {} };'), errors: [{ messageId: 'lambda' }] },
-    {
-      ...ts('const f = async () => { await 1; };'),
-      errors: [{ messageId: 'lambda' }],
-    },
-  ],
-});
-
-tester.run('no-number-conversion', plugin.rules['no-number-conversion'], {
-  valid: [
-    ts('const a = 1 + 2; const b = -a; const s = String(a); const t = a.toString();'),
-    ts('function parseFloat(x: string) { return x; } parseFloat("1");'),
-    ts('const Number = (x: string) => x; Number("1");'),
-    ts('const n = Math.floor(1.5) + Math.abs(-1);'),
-  ],
-  invalid: [
-    {
-      ...ts('const a = Number("1");'),
-      errors: [{ messageId: 'conversion', data: { name: 'Number' } }],
-    },
-    {
-      ...ts('const a = parseFloat("1.5");'),
-      errors: [{ messageId: 'conversion', data: { name: 'parseFloat' } }],
-    },
-    {
-      ...ts('const a = parseInt("1", 10);'),
-      errors: [{ messageId: 'conversion', data: { name: 'parseInt' } }],
-    },
-    {
-      ...ts('const a = Number.parseFloat("1"); const b = Number.parseInt("1");'),
-      errors: [
-        { messageId: 'conversion', data: { name: 'Number.parseFloat' } },
-        { messageId: 'conversion', data: { name: 'Number.parseInt' } },
-      ],
-    },
-    {
-      ...ts('const a = new Number("1");'),
-      errors: [{ messageId: 'conversion', data: { name: 'Number' } }],
-    },
-    { ...ts('const a = +"1";'), errors: [{ messageId: 'conversion', data: { name: '+value' } }] },
   ],
 });

@@ -5,14 +5,14 @@ import { join, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { ALLOWED_MEMBERS } from './collections.ts';
-import { farmerFunctionName, loadFarmerInfo } from './farmer.ts';
-import { pyFunctionName, toSnakeCase } from './naming.ts';
-import { buildProject } from './project.ts';
-import * as pyAst from './py.ts';
-import { transpileProject } from './transpile.ts';
+import { ALLOWED_MEMBERS } from '../collections.ts';
+import { farmerFunctionName, loadFarmerInfo } from '../farmer.ts';
+import { pyFunctionName, toSnakeCase } from '../naming.ts';
+import { buildProject } from '../project.ts';
+import * as pyAst from '../py.ts';
+import { transpileProject } from '../transpile.ts';
 
-const root = resolve(import.meta.dirname, '../..');
+const root = resolve(import.meta.dirname, '../../..');
 const farmer = loadFarmerInfo(join(root, 'types/farmer'));
 
 /** Transpiles `source` as the module `main` and returns the Python without the header. */

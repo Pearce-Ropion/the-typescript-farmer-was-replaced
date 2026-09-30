@@ -37,6 +37,6 @@ The game has no classes or lambdas, so `farm/no-classes` and `farm/no-lambdas` r
 instead). `farm/no-number-conversion` reports `Number()`, `parseInt`, `parseFloat` and unary `+`, because the game has
 `str()` but no `int()` or `float()`; `String(value)` and `value.toString()` become `str(value)`.
 Ternaries are reported by oxlint's `no-ternary` rule (use `if`/`else`). Type assertions (`value as T`, `<T>value` and `value!`) are reported by oxlint's `typescript/consistent-type-assertions`
-and `typescript/no-non-null-assertion` rules, so values are converted with real code instead of being cast. The `farm/no-unsupported-collection-member` oxlint rule (`scripts/oxlint/farm-plugin.ts`, enabled for `src/farm`)
+and `typescript/no-non-null-assertion` rules, so values are converted with real code instead of being cast. The `farm/no-unsupported-collection-member` oxlint rule (one file per rule in `scripts/oxlint/rules/`, registered in `scripts/oxlint/index.ts` and enabled for `src/farm`)
 reports any other member as you type. It works from annotations and initialisers in the same file, so values whose
 type comes from another file can't be checked there. The transpiler still rejects them.
