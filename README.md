@@ -4,11 +4,11 @@ Write the game's code in TypeScript in `src/farm/` and build it to Python in `bu
 
 ```sh
 yarn build   # transpile once
-yarn dev     # rebuild whenever a file in src/farm/ (or the src/farmer/ declarations) is saved
+yarn dev     # rebuild whenever a file in src/farm/ (or the types/farmer/ declarations) is saved
 ```
 
 Each `src/farm/<name>.ts` becomes `build/<name>.py`. The game's API is imported from `'farmer'`
-(see `src/farmer/`), and function names are converted to `snake_case`.
+(see `types/farmer/`), and function names are converted to `snake_case`.
 
 Only the parts of TypeScript that map onto the game's Python are supported:
 
