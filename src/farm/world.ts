@@ -60,11 +60,19 @@ export function getMapItem(x = drone.getX(), y = drone.getY()): WorldItem | null
 }
 
 export function getEntity(x = drone.getX(), y = drone.getY()): Entities | null {
-  return getMapItem(x, y)?.entity ?? null;
+  const item = getMapItem(x, y);
+  if (item === null) {
+    return null;
+  }
+  return item.entity;
 }
 
 export function getEntityPower(x = drone.getX(), y = drone.getY()): number {
-  return getMapItem(x, y)?.power || 0;
+  const item = getMapItem(x, y);
+  if (item === null) {
+    return 0;
+  }
+  return item.power || 0;
 }
 
 export function setEntity(entity: Entities | null, x = drone.getX(), y = drone.getY()): void {
@@ -72,7 +80,7 @@ export function setEntity(entity: Entities | null, x = drone.getX(), y = drone.g
   const key = mapKey(x, y);
   let item = getMapItem(x, y);
   if (item === null) {
-    item = { entity };
+    item = { entity, power: null };
     worldMap[key] = item;
   }
   item.entity = entity;

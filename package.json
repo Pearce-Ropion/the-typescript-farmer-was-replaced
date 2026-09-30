@@ -2,6 +2,8 @@
   "name": "ts-farmer-was-replaced",
   "type": "module",
   "scripts": {
+    "build": "node scripts/build.ts",
+    "dev": "node scripts/build.ts --watch",
     "format": "oxfmt",
     "lint": "oxlint --type-aware",
     "lint:fix": "oxlint --type-aware --fix",
@@ -10,8 +12,10 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
+    "oxc-parser": "^0.152.0",
     "oxfmt": "^0.71.0",
     "oxlint": "^1.86.0",
+    "py-ast": "^1.16.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.1",
     "vitest": "^5.0.2"

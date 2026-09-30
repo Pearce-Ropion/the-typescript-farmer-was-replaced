@@ -15,3 +15,6 @@ node_modules
 
 #!.yarn/cache
 
+
+# Generated Python output of the build script
+build
