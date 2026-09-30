@@ -332,7 +332,7 @@ export declare enum Leaderboards {
   Wood_Single,
 }
 
-export declare enum Unlock {
+export declare enum Unlocks {
   /**
    * Automatically unlock things.
    */

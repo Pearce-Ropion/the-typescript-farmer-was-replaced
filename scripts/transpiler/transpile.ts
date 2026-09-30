@@ -1,6 +1,5 @@
 import { parseSync } from 'oxc-parser';
 
-import { PYTHON_ENUM_NAMES } from './farmer.ts';
 import type { FarmerInfo } from './farmer.ts';
 import { pyFunctionName, pyIdent } from './naming.ts';
 import * as py from './py.ts';
@@ -604,7 +603,7 @@ class FileTranspiler {
       case 'farmerFunction':
         return py.name(binding.name);
       case 'farmerEnum':
-        return py.name(PYTHON_ENUM_NAMES[binding.name] ?? binding.name);
+        return py.name(binding.name);
       case 'moduleMember':
         return py.attribute(
           py.name(binding.module),
@@ -1672,10 +1671,7 @@ class FileTranspiler {
         const member: string = node.property.name;
         return objectBinding.name === 'Direction'
           ? py.name(member)
-          : py.attribute(
-              py.name(PYTHON_ENUM_NAMES[objectBinding.name] ?? objectBinding.name),
-              member,
-            );
+          : py.attribute(py.name(objectBinding.name), member);
       }
     }
     const object = this.emitObjectOf(node, ctx);

@@ -1,4 +1,4 @@
-import type { Entities, Grounds, Hats, Items, Leaderboards, Unlock } from './entities';
+import type { Entities, Grounds, Hats, Items, Leaderboards, Unlocks } from './entities';
 
 /**
  * Gets the cost of a `thing`
@@ -13,7 +13,7 @@ import type { Entities, Grounds, Hats, Items, Leaderboards, Unlock } from './ent
  * takes `1` tick to execute.
  * @example
  * ```ts
- * const cost = getCost(Unlock.Carrots);
+ * const cost = getCost(Unlocks.Carrots);
  * if (cost !== null) {
  *   for (const [item, amount] of Object.entries(cost)) {
  *     if (numItems(Number(item)) < amount) {
@@ -24,7 +24,7 @@ import type { Entities, Grounds, Hats, Items, Leaderboards, Unlock } from './ent
  * ```
  */
 export declare function getCost(
-  thing: Entities | Items | Unlock,
+  thing: Entities | Items | Unlocks,
   level?: number,
 ): Partial<Record<Items, number>> | null;
 
@@ -37,10 +37,10 @@ export declare function getCost(
  *
  * @example
  * ```ts
- * unlock(Unlock.Carrots);
+ * unlock(Unlocks.Carrots);
  * ```
  */
-export declare function unlock(unlock: Unlock): boolean;
+export declare function unlock(unlock: Unlocks): boolean;
 
 /**
  * Used to check if an unlock, entity, ground, item or hat is already unlocked.
@@ -51,7 +51,7 @@ export declare function unlock(unlock: Unlock): boolean;
  *
  * @example
  * ```ts
- * if (numUnlocked(Unlock.Carrots) > 0) {
+ * if (numUnlocked(Unlocks.Carrots) > 0) {
  *   plant(Entities.Carrot);
  * } else {
  *   print("Carrots not unlocked yet");
@@ -59,5 +59,5 @@ export declare function unlock(unlock: Unlock): boolean;
  * ```
  */
 export declare function numUnlocked(
-  thing: Entities | Grounds | Hats | Items | Leaderboards | Unlock,
+  thing: Entities | Grounds | Hats | Items | Leaderboards | Unlocks,
 ): number;

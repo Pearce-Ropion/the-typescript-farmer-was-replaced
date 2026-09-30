@@ -260,10 +260,10 @@ describe('expressions', () => {
 
   it('translates game enums and functions', () => {
     const out = py(`
-      import { Entities, Direction, Unlock, move, getPosX } from 'farmer';
+      import { Entities, Direction, Unlocks, move, getPosX } from 'farmer';
       move(Direction.North);
       const e = Entities.Bush;
-      const u = Unlock.Carrots;
+      const u = Unlocks.Carrots;
       getPosX();
     `);
     expect(out).toBe('move(North)\ne = Entities.Bush\nu = Unlocks.Carrots\nget_pos_x()');

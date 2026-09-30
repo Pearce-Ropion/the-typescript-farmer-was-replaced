@@ -16,11 +16,6 @@ export interface FarmerInfo {
 export const COLLECTION_CLASSES = ['List', 'HashSet', 'Dict'];
 
 /**
- * The Python name of a TypeScript enum, when it differs from the TypeScript name.
- */
-export const PYTHON_ENUM_NAMES: Record<string, string> = { Unlock: 'Unlocks' };
-
-/**
  * Reads the declaration files in `dir` to find out which names the game provides.
  */
 export function loadFarmerInfo(dir: string): FarmerInfo {

@@ -1,4 +1,4 @@
-import type { Items, Unlock } from './entities';
+import type { Items, Unlocks } from './entities';
 
 /**
  * Get the current game time.
@@ -73,10 +73,10 @@ export declare function setWorldSize(size: number): void;
  *
  * `simUnlocks`: A sequence containing the starting unlocks. These unlocks can be one of these:
  *
- * - `Partial<Record<Unlock, number>>` - Example: `{ [Unlock.Expand]: 2, [Unlock.Cactus]: 1 }`
- * - `readonly (readonly [Unlock, number])[]` - Example: `[[Unlock.Expand, 2], [Unlock.Cactus, 1]]`
- * - `readonly Unlock[]` - Captures your current unlock level of specific unlocks from your main farm. Example: `[Unlock.Expand, Unlock.Cactus]`
- * - `typeof Unlock` - Captures all of your current unlock levels from your main farm.
+ * - `Partial<Record<Unlocks, number>>` - Example: `{ [Unlocks.Expand]: 2, [Unlocks.Cactus]: 1 }`
+ * - `readonly (readonly [Unlocks, number])[]` - Example: `[[Unlocks.Expand, 2], [Unlocks.Cactus, 1]]`
+ * - `readonly Unlocks[]` - Captures your current unlock level of specific unlocks from your main farm. Example: `[Unlocks.Expand, Unlocks.Cactus]`
+ * - `typeof Unlocks` - Captures all of your current unlock levels from your main farm.
  *
  * `simItems`: An object mapping items to amounts. The simulation starts with these items.
  *
@@ -99,7 +99,7 @@ export declare function setWorldSize(size: number): void;
  * @example
  * ```ts
  * const filename = "f1";
- * const simUnlocks = Unlock;
+ * const simUnlocks = Unlocks;
  * const simItems = { [Items.Carrot]: 10000, [Items.Hay]: 50 };
  * const simGlobals = { a: 13 };
  * const seed = 0;
@@ -120,7 +120,7 @@ export declare function simulate(
  * The accepted forms for the starting unlocks of a simulation.
  */
 export type SimulateUnlocks =
-  | Partial<Record<Unlock, number>>
-  | readonly (readonly [Unlock, number])[]
-  | readonly Unlock[]
-  | typeof Unlock;
+  | Partial<Record<Unlocks, number>>
+  | readonly (readonly [Unlocks, number])[]
+  | readonly Unlocks[]
+  | typeof Unlocks;
