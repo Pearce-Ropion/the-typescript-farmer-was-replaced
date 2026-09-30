@@ -3,5 +3,16 @@
   "plugins": ["typescript", "unicorn", "oxc", "import"],
   "env": {
     "builtin": true
-  }
+  },
+  "jsPlugins": ["./scripts/oxlint/farm-plugin.ts"],
+  "overrides": [
+    {
+      "files": ["src/**/*.ts"],
+      "rules": {
+        "farm/no-unsupported-collection-member": "error",
+        "farm/no-classes": "error",
+        "farm/no-lambdas": "error"
+      }
+    }
+  ]
 }

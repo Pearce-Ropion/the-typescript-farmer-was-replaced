@@ -1,4 +1,4 @@
-import { Dict, getWorldSize as getFarmWorldSize } from 'farmer';
+import { getWorldSize as getFarmWorldSize } from 'farmer';
 import type { Entities } from 'farmer';
 
 import * as drone from './drone';
@@ -10,7 +10,7 @@ interface WorldItem {
 
 let worldEdgeRef = 0;
 let worldSizeRef = 0;
-let worldMapRef: Dict<string, WorldItem> | null = null;
+let worldMapRef: Record<string, WorldItem> | null = null;
 let sunflowerCountRef = 0;
 
 function mapKey(x: number, y: number): string {
@@ -31,9 +31,9 @@ export function getWorldSize(): number {
   return worldSizeRef;
 }
 
-export function getWorldMap(): Dict<string, WorldItem> {
+export function getWorldMap(): Record<string, WorldItem> {
   if (worldMapRef === null) {
-    worldMapRef = new Dict<string, WorldItem>();
+    worldMapRef = {};
   }
   return worldMapRef;
 }

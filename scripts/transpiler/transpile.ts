@@ -61,7 +61,6 @@ type Binding =
   | { type: 'variable'; name: string; valueKind?: Kind }
   | { type: 'farmerFunction'; name: string }
   | { type: 'farmerEnum'; name: string }
-  | { type: 'farmerClass'; name: string }
   | { type: 'farmerNamespace' }
   | { type: 'moduleNamespace'; module: string }
   | { type: 'moduleMember'; module: string; name: string; decl: Declaration };
@@ -73,7 +72,12 @@ interface Ctx {
   isModule: boolean;
 }
 
-const KIND_BY_CLASS: Record<string, Kind> = { Dict: 'dict', List: 'list', HashSet: 'set' };
+const KIND_BY_CLASS: Record<string, Kind> = {
+  Set: 'set',
+  ReadonlySet: 'set',
+  Array: 'list',
+  ReadonlyArray: 'list',
+};
 
 const TYPE_ONLY_STATEMENTS = new Set([
   'TSInterfaceDeclaration',
@@ -172,6 +176,9 @@ function kindFromType(annotation: Node | null | undefined): Kind | undefined {
   }
   if (type.type === 'TSArrayType') {
     return 'list';
+  }
+  if (type.type === 'TSTypeOperator') {
+    return kindFromType(type.typeAnnotation);
   }
   if (type.type === 'TSTypeLiteral') {
     return 'dict';
@@ -476,9 +483,6 @@ class FileTranspiler {
     if (this.farmer.enums.has(name)) {
       return { type: 'farmerEnum', name };
     }
-    if (this.farmer.classes.has(name)) {
-      return { type: 'farmerClass', name };
-    }
     return null;
   }
 
@@ -658,10 +662,13 @@ class FileTranspiler {
         if (binding?.type === 'moduleMember') {
           return binding.decl.returnKind;
         }
-        if (callee.type === 'MemberExpression' && !callee.computed && !binding) {
-          if (['keys', 'values', 'entries'].includes(callee.property.name)) {
-            return 'list';
-          }
+        if (
+          callee.type === 'MemberExpression' &&
+          !callee.computed &&
+          this.isGlobalObject(callee.object, ctx) &&
+          callee.property.name === 'keys'
+        ) {
+          return 'list';
         }
         return undefined;
       }
@@ -1139,73 +1146,82 @@ class FileTranspiler {
     }
   }
 
+  /**
+   * Recognises `Object.keys(dict)`, `Object.values(dict)` and `Object.entries(dict)`, which can be the subject of a loop.
+   */
+  private collectionIteration(node: Node, ctx: Ctx): { method: string; receiver: Node } | null {
+    if (node.type !== 'CallExpression') {
+      return null;
+    }
+    const callee = unwrap(node.callee);
+    if (
+      callee.type !== 'MemberExpression' ||
+      callee.computed ||
+      !this.isGlobalObject(callee.object, ctx) ||
+      !['keys', 'values', 'entries'].includes(callee.property.name) ||
+      node.arguments.length !== 1
+    ) {
+      return null;
+    }
+    return { method: callee.property.name, receiver: node.arguments[0] };
+  }
+
+  private isGlobalObject(node: Node, ctx: Ctx): boolean {
+    return (
+      node.type === 'Identifier' &&
+      node.name === 'Object' &&
+      !this.resolveIdent('Object', ctx, node)
+    );
+  }
+
   private emitForOf(node: Node, ctx: Ctx): PyNode[] {
     const right = unwrap(node.right);
     const left: Node = node.left;
     const isAssignment = left.type !== 'VariableDeclaration';
     const target = left.type === 'VariableDeclaration' ? left.declarations[0].id : left;
 
-    if (right.type === 'CallExpression') {
-      const callee = unwrap(right.callee);
-      if (
-        callee.type === 'MemberExpression' &&
-        !callee.computed &&
-        !this.resolveStatic(callee, ctx) &&
-        ['keys', 'values', 'entries'].includes(callee.property.name)
-      ) {
-        const method: string = callee.property.name;
-        const kind = this.inferKind(callee.object, ctx);
-        if (!kind) {
-          this.fail(
-            right,
-            `Cannot tell whether this is a List, HashSet or Dict. Annotate its type so '${method}()' can be translated`,
-          );
+    const source = this.collectionIteration(right, ctx);
+    if (source) {
+      const { method, receiver } = source;
+      if (method !== 'keys') {
+        if (!this.isPure(receiver)) {
+          this.fail(right, `Store the object in a variable before looping over its ${method}`);
         }
-        if (kind === 'dict' && method !== 'keys') {
-          if (!this.isPure(callee.object)) {
-            this.fail(
-              right,
-              `Store the dictionary in a variable before looping over its ${method}()`,
-            );
-          }
-          const dict = this.emitExpr(callee.object, ctx);
-          if (method === 'values') {
-            this.keyCount += 1;
-            const key = py.name(`_key_${this.keyCount}`);
-            return [
-              py.forStatement(py.toStore(key), dict, [
-                ...this.assignPattern(target, py.subscript(dict, key), ctx, isAssignment),
-                ...this.emitBlock(node.body, ctx),
-              ]),
-            ];
-          }
-          if (
-            target.type !== 'ArrayPattern' ||
-            target.elements.length !== 2 ||
-            target.elements.some((element: Node | null) => element?.type !== 'Identifier')
-          ) {
-            this.fail(left, 'Loop over entries() with a pattern of the form [key, value]');
-          }
-          const keyTarget = this.emitTarget(target.elements[0], ctx, isAssignment);
-          const valueTarget = this.emitTarget(target.elements[1], ctx, isAssignment);
+        const dict = this.emitExpr(receiver, ctx);
+        if (method === 'values') {
+          this.keyCount += 1;
+          const key = py.name(`_key_${this.keyCount}`);
           return [
-            py.forStatement(keyTarget, dict, [
-              py.assign(valueTarget, py.subscript(dict, py.name(keyTarget.id))),
+            py.forStatement(py.toStore(key), dict, [
+              ...this.assignPattern(target, py.subscript(dict, key), ctx, isAssignment),
               ...this.emitBlock(node.body, ctx),
             ]),
           ];
         }
-        // keys() of a dict, or values() of a list or set, are just the iteration order of the collection.
-        if (method !== 'entries') {
-          const loop = this.emitLoopTarget(left, ctx);
-          return [
-            py.forStatement(loop.target, this.emitExpr(callee.object, ctx), [
-              ...loop.prefix,
-              ...this.emitBlock(node.body, ctx),
-            ]),
-          ];
+        if (
+          target.type !== 'ArrayPattern' ||
+          target.elements.length !== 2 ||
+          target.elements.some((element: Node | null) => element?.type !== 'Identifier')
+        ) {
+          this.fail(left, 'Loop over entries() with a pattern of the form [key, value]');
         }
+        const keyTarget = this.emitTarget(target.elements[0], ctx, isAssignment);
+        const valueTarget = this.emitTarget(target.elements[1], ctx, isAssignment);
+        return [
+          py.forStatement(keyTarget, dict, [
+            py.assign(valueTarget, py.subscript(dict, py.name(keyTarget.id))),
+            ...this.emitBlock(node.body, ctx),
+          ]),
+        ];
       }
+      // The keys of a dictionary are what looping over it produces.
+      const loop = this.emitLoopTarget(left, ctx);
+      return [
+        py.forStatement(loop.target, this.emitExpr(receiver, ctx), [
+          ...loop.prefix,
+          ...this.emitBlock(node.body, ctx),
+        ]),
+      ];
     }
     const loop = this.emitLoopTarget(left, ctx);
     return [
@@ -1625,39 +1641,31 @@ class FileTranspiler {
   }
 
   private emitNew(node: Node, ctx: Ctx): PyNode {
-    const callee = this.resolveStatic(node.callee, ctx);
-    if (callee?.type !== 'farmerClass') {
-      return this.fail(node, 'Only List, HashSet and Dict can be constructed');
+    const isSet =
+      node.callee.type === 'Identifier' &&
+      node.callee.name === 'Set' &&
+      !this.resolveIdent('Set', ctx, node.callee);
+    if (!isSet) {
+      const name = node.callee.type === 'Identifier' ? node.callee.name : '';
+      return this.fail(
+        node,
+        name === 'Map' || name === 'WeakMap' || name === 'WeakSet'
+          ? `${name} is not supported. Use an object or a Set`
+          : 'Only Set can be constructed. Use [] and {} for arrays and objects',
+      );
     }
     const args = node.arguments as Node[];
     const first = args[0] ? unwrap(args[0]) : null;
     if (args.length > 1) {
-      this.fail(node, `${callee.name} takes at most one argument`);
+      this.fail(node, 'Set takes at most one argument');
     }
-    switch (callee.name) {
-      case 'List':
-        if (!first) {
-          return py.list([]);
-        }
-        return first.type === 'ArrayExpression'
-          ? this.emitExpr(first, ctx)
-          : py.call(py.name('list'), [this.emitExpr(first, ctx)]);
-      case 'HashSet':
-        if (!first || (first.type === 'ArrayExpression' && first.elements.length === 0)) {
-          return py.call(py.name('set'));
-        }
-        if (first.type === 'ArrayExpression') {
-          return py.set((first.elements as (Node | null)[]).map(e => this.emitElement(e, ctx)));
-        }
-        return py.call(py.name('set'), [this.emitExpr(first, ctx)]);
-      default:
-        if (!first) {
-          return py.dict([], []);
-        }
-        return first.type === 'ObjectExpression'
-          ? this.emitExpr(first, ctx)
-          : py.call(py.name('dict'), [this.emitExpr(first, ctx)]);
+    if (!first || (first.type === 'ArrayExpression' && first.elements.length === 0)) {
+      return py.call(py.name('set'));
     }
+    if (first.type === 'ArrayExpression') {
+      return py.set((first.elements as (Node | null)[]).map(e => this.emitElement(e, ctx)));
+    }
+    return py.call(py.name('set'), [this.emitExpr(first, ctx)]);
   }
 
   private emitMember(node: Node, ctx: Ctx): PyNode {
@@ -1708,7 +1716,7 @@ class FileTranspiler {
 
     const binding = this.resolveStatic(callee, ctx);
     if (binding) {
-      if (binding.type === 'farmerClass' || binding.type === 'farmerEnum') {
+      if (binding.type === 'farmerEnum') {
         return this.fail(node, 'This cannot be called');
       }
       return py.call(this.emitBinding(binding, callee), this.emitArguments(args, ctx));
@@ -1722,6 +1730,15 @@ class FileTranspiler {
     }
 
     if (callee.type === 'MemberExpression' && !callee.computed) {
+      if (this.isGlobalObject(callee.object, ctx)) {
+        if (callee.property.name === 'keys' && args.length === 1) {
+          return py.call(py.name('list'), [this.emitExpr(args[0], ctx)]);
+        }
+        return this.fail(
+          node,
+          `Object.${callee.property.name} can only be used as the subject of a for...of loop (Object.keys can be used anywhere)`,
+        );
+      }
       if (
         callee.object.type === 'Identifier' &&
         callee.object.name === 'Math' &&
@@ -1776,56 +1793,37 @@ class FileTranspiler {
       case 'push':
         expectArgs(1, 1);
         return method('append');
-      case 'insert':
-        expectArgs(2, 2);
-        return method('insert');
       case 'pop':
         expectArgs(0, 1);
         return method('pop');
-      case 'remove':
-        expectArgs(1, 1);
-        return method('remove');
       case 'add':
         expectArgs(1, 1);
         return method('add');
       case 'delete':
         expectArgs(1, 1);
         return method('remove');
+      case 'shift':
+        expectArgs(0, 0);
+        return py.call(py.attribute(receiver, 'pop'), [py.constant(0)]);
+      case 'unshift':
+        expectArgs(1, 1);
+        return py.call(py.attribute(receiver, 'insert'), [py.constant(0), values[0]]);
+      case 'splice': {
+        // Only the two forms that map onto the game's insert() and pop() are supported.
+        const removes = args[1] && unwrap(args[1]);
+        const count = removes?.type === 'Literal' ? removes.value : undefined;
+        if (args.length === 3 && count === 0) {
+          return py.call(py.attribute(receiver, 'insert'), [values[0], values[2]]);
+        }
+        if (args.length === 2 && count === 1) {
+          return py.call(py.attribute(receiver, 'pop'), [values[0]]);
+        }
+        return this.fail(node, 'Only splice(index, 0, value) and splice(index, 1) are supported');
+      }
+      case 'includes':
       case 'has':
         expectArgs(1, 1);
         return py.compare(values[0], 'In', receiver);
-      case 'get': {
-        expectArgs(1, 1);
-        const key = this.newTemp();
-        const found = this.newTemp();
-        this.pre.push(
-          py.assign(py.name(key, true), values[0]),
-          py.assign(py.name(found, true), py.none()),
-          py.ifStatement(py.compare(py.name(key), 'In', receiver), [
-            py.assign(py.name(found, true), py.name(key)),
-          ]),
-        );
-        return py.name(found);
-      }
-      case 'keys':
-      case 'values':
-      case 'entries': {
-        expectArgs(0, 0);
-        const kind = this.inferKind(callee.object, ctx);
-        if (!kind) {
-          this.fail(
-            node,
-            `Cannot tell whether this is a List, HashSet or Dict. Annotate its type so '${name}()' can be translated`,
-          );
-        }
-        if ((name === 'keys' && kind === 'dict') || (name === 'values' && kind !== 'dict')) {
-          return py.call(py.name('list'), [receiver]);
-        }
-        return this.fail(
-          node,
-          `'${name}()' on a ${kind === 'dict' ? 'Dict' : 'List or HashSet'} can only be used as the subject of a for...of loop`,
-        );
-      }
       default:
         return this.fail(node, `The method '${name}' is not supported`);
     }

@@ -1,5 +1,4 @@
 import { random } from 'farmer';
-import type { List } from 'farmer';
 
 export function floorPercent(value: number, percent: number): number {
   return Math.floor(value * percent);
@@ -9,7 +8,7 @@ export function randomBetween(min: number, max: number): number {
   return Math.floor(random() * (max - min + 1)) + min;
 }
 
-export function randomItem<T>(list: List<T>): T {
+export function randomItem<T>(list: T[]): T {
   return list[randomBetween(0, list.length - 1)];
 }
 

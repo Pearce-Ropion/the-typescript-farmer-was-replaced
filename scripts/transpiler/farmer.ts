@@ -9,11 +9,7 @@ import { parseSync } from 'oxc-parser';
 export interface FarmerInfo {
   functions: Set<string>;
   enums: Set<string>;
-  /** The custom collection primitives (`List`, `HashSet` and `Dict`). */
-  classes: Set<string>;
 }
-
-export const COLLECTION_CLASSES = ['List', 'HashSet', 'Dict'];
 
 /**
  * Reads the declaration files in `dir` to find out which names the game provides.
@@ -22,7 +18,6 @@ export function loadFarmerInfo(dir: string): FarmerInfo {
   const info: FarmerInfo = {
     functions: new Set(),
     enums: new Set(),
-    classes: new Set(COLLECTION_CLASSES),
   };
 
   for (const file of readdirSync(dir)) {

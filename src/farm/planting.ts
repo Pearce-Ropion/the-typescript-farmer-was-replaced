@@ -2,7 +2,6 @@ import {
   Entities,
   Grounds,
   Items,
-  List,
   canHarvest,
   getEntityType,
   getGroundType,
@@ -22,12 +21,12 @@ import * as world from './world';
 let pumpkinSizeRef = 0;
 
 const MIN_SUNFLOWER = 11;
-const SINGLE_SLOT_ENTITIES = new List([
+const SINGLE_SLOT_ENTITIES: Entities[] = [
   Entities.Grass,
   Entities.Bush,
   Entities.Carrot,
   Entities.Sunflower,
-]);
+];
 
 export function getPumpkinSize(): number {
   const worldEdge = world.getWorldEdge();

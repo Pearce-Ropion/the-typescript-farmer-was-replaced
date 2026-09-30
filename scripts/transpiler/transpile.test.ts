@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { ALLOWED_MEMBERS } from './collections.ts';
 import { loadFarmerInfo } from './farmer.ts';
 import { pyFunctionName, toSnakeCase } from './naming.ts';
 import { buildProject } from './project.ts';
@@ -35,7 +36,7 @@ function py(source: string, others: Record<string, string> = {}): string {
     .replace(/^( {4})+/gm, indent => '\t'.repeat(indent.length / 4));
 }
 
-const IMPORT = "import { move, Direction, Entities, List, HashSet, Dict } from 'farmer';\n";
+const IMPORT = "import { move, Direction, Entities } from 'farmer';\n";
 
 describe('naming', () => {
   it('converts camelCase to snake_case', () => {
@@ -203,7 +204,7 @@ describe('destructuring', () => {
 
   it('unpacks loop variables at the top of the loop body', () => {
     const out = py(`${IMPORT}
-      const pairs = new List([[1, 2]]);
+      const pairs = [[1, 2]];
       for (const [a, b] of pairs) { move(Direction.North); }
     `);
     expect(out).toContain('for _tmp_1 in pairs:\n\ta = _tmp_1[0]\n\tb = _tmp_1[1]');
@@ -269,15 +270,15 @@ describe('expressions', () => {
     expect(out).toBe('move(North)\ne = Entities.Bush\nu = Unlocks.Carrots\nget_pos_x()');
   });
 
-  it('translates the collection primitives', () => {
+  it('translates native arrays, sets and objects', () => {
     const out = py(`${IMPORT}
-      const l = new List([1, 2]);
+      const l = [1, 2];
       l.push(3);
       const n = l.length;
-      const s = new HashSet([1, 2]);
+      const s = new Set([1, 2]);
       s.delete(1);
       const has = s.has(2);
-      const d = new Dict({ a: 1, [Entities.Bush]: 2 });
+      const d = { a: 1, [Entities.Bush]: 2 };
       const v = d.a;
       d.b = 3;
     `);
@@ -298,12 +299,12 @@ describe('expressions', () => {
 
   it('translates empty and copied collections', () => {
     const out = py(`${IMPORT}
-      const a = new List<number>();
-      const b = new HashSet<number>();
-      const c = new Dict<string, number>();
-      const d = new List(a);
+      const a: number[] = [];
+      const b = new Set<number>();
+      const c: Record<string, number> = {};
+      const d = new Set(a);
     `);
-    expect(out).toBe('a = []\nb = set()\nc = {}\nd = list(a)');
+    expect(out).toBe('a = []\nb = set()\nc = {}\nd = set(a)');
   });
 
   it('translates optional chaining and nullish coalescing without conditional expressions', () => {
@@ -383,28 +384,95 @@ describe('conditional expressions', () => {
   it('never emits an inline conditional expression', () => {
     const out = py(`${IMPORT}
       declare const a: { b: number } | null;
-      const s = new HashSet([1]);
-      const v = s.get(1) ?? (a?.b ? 1 : 2);
+      const v = a?.b ?? (a ? 1 : 2);
     `);
     expect(out).not.toMatch(/\S if .* else/);
   });
 });
 
-describe('for...of', () => {
-  it('iterates lists and sets directly', () => {
-    const out = py(`${IMPORT}
-      const l = new List([1, 2]);
-      for (const x of l) { move(Direction.North); }
-    `);
-    expect(out).toContain('for x in l:');
+describe('native collections', () => {
+  // One example for every member the lint rule allows. A member without an example fails the test below.
+  const EXAMPLES: Record<string, [code: string, python: string]> = {
+    'array.length': ['const n = xs.length;', 'n = len(xs)'],
+    'array.push': ['xs.push(1);', 'xs.append(1)'],
+    'array.pop': ['xs.pop();', 'xs.pop()'],
+    'array.shift': ['xs.shift();', 'xs.pop(0)'],
+    'array.unshift': ['xs.unshift(1);', 'xs.insert(0, 1)'],
+    'array.splice': ['xs.splice(1, 0, 5); xs.splice(2, 1);', 'xs.insert(1, 5)\nxs.pop(2)'],
+    'array.includes': ['const b = xs.includes(1);', 'b = 1 in xs'],
+    'set.size': ['const n = s.size;', 'n = len(s)'],
+    'set.add': ['s.add(1);', 's.add(1)'],
+    'set.delete': ['s.delete(1);', 's.remove(1)'],
+    'set.has': ['const b = s.has(1);', 'b = 1 in s'],
+    'statics.Object.keys': ['const k = Object.keys(o);', 'k = list(o)'],
+    'statics.Object.values': [
+      'for (const v of Object.values(o)) { print(v); }',
+      'for _key_1 in o:\n\tv = o[_key_1]\n\tprint(v)',
+    ],
+    'statics.Object.entries': [
+      'for (const [k, v] of Object.entries(o)) { print(k, v); }',
+      'for k in o:\n\tv = o[k]\n\tprint(k, v)',
+    ],
+  };
+
+  const prelude = `
+    import { print } from 'farmer';
+    declare const xs: number[];
+    declare const s: Set<number>;
+    declare const o: Record<string, number>;
+  `;
+
+  const members = [
+    ...ALLOWED_MEMBERS.array.map(name => `array.${name}`),
+    ...ALLOWED_MEMBERS.set.map(name => `set.${name}`),
+    ...ALLOWED_MEMBERS.object.map(name => `object.${name}`),
+    ...ALLOWED_MEMBERS.statics.map(name => `statics.${name}`),
+  ];
+
+  it.each(members)('supports %s', member => {
+    const example = EXAMPLES[member];
+    expect(example, `add an example for ${member}`).toBeDefined();
+    const out = py(`${prelude}${example[0]}`);
+    expect(out).toBe(example[1]);
   });
 
-  it('iterates dictionaries by key, value and entry', () => {
+  it('constructs sets and arrays', () => {
+    const out = py(`
+      const a = new Set<number>();
+      const b = new Set([1, 2]);
+      const c = new Set(a);
+      const d: number[] = [];
+    `);
+    expect(out).toBe('a = set()\nb = {1, 2}\nc = set(a)\nd = []');
+  });
+
+  it('iterates arrays and sets directly', () => {
+    const out = py(`
+      import { print } from 'farmer';
+      declare const xs: number[];
+      declare const s: Set<number>;
+      for (const x of xs) { print(x); }
+      for (const y of s) { print(y); }
+    `);
+    expect(out).toBe('for x in xs:\n\tprint(x)\nfor y in s:\n\tprint(y)');
+  });
+
+  it('rejects Map', () => {
+    const { errors } = transpileProject(
+      [{ name: 'main', path: 'main.ts', source: 'const m = new Map();' }],
+      farmer,
+    );
+    expect(errors[0]?.message).toMatch(/Map is not supported/);
+  });
+});
+
+describe('for...of', () => {
+  it('iterates the keys, values and entries of an object', () => {
     const out = py(`${IMPORT}
-      const d = new Dict({ a: 1 });
-      for (const k of d.keys()) { move(Direction.North); }
-      for (const v of d.values()) { move(Direction.North); }
-      for (const [k2, v2] of d.entries()) { move(Direction.North); }
+      const d = { a: 1 };
+      for (const k of Object.keys(d)) { move(Direction.North); }
+      for (const v of Object.values(d)) { move(Direction.North); }
+      for (const [k2, v2] of Object.entries(d)) { move(Direction.North); }
     `);
     expect(out).toContain('for k in d:');
     expect(out).toContain('for _key_1 in d:\n\tv = d[_key_1]');
