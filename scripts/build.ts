@@ -19,7 +19,7 @@ const { values } = parseArgs({
 const options: BuildOptions = {
   srcDir: resolve(root, values.src),
   outDir: resolve(root, values.out),
-  farmerDir: resolve(root, 'src/farmer'),
+  farmerDir: resolve(root, 'types/farmer'),
 };
 
 const display = (path: string) => relative(root, path);

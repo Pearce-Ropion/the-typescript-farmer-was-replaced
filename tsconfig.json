@@ -9,7 +9,7 @@
 
     "paths": {
       "@/*": ["./src/*"],
-      "farmer": ["./src/farmer/index.d.ts"]
+      "farmer": ["./types/farmer/index.d.ts"]
     },
 
     /* Bundler mode */
@@ -25,5 +25,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "scripts", "vitest.config.ts"]
+  "include": ["src", "scripts", "types", "vitest.config.ts"]
 }

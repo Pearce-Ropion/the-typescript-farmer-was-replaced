@@ -13,7 +13,7 @@ import * as pyAst from './py.ts';
 import { transpileProject } from './transpile.ts';
 
 const root = resolve(import.meta.dirname, '../..');
-const farmer = loadFarmerInfo(join(root, 'src/farmer'));
+const farmer = loadFarmerInfo(join(root, 'types/farmer'));
 
 /** Transpiles `source` as the module `main` and returns the Python without the header. */
 function py(source: string, others: Record<string, string> = {}): string {
@@ -534,7 +534,7 @@ describe('project', () => {
       const result = buildProject({
         srcDir: join(root, 'src/farm'),
         outDir,
-        farmerDir: join(root, 'src/farmer'),
+        farmerDir: join(root, 'types/farmer'),
       });
       expect(result.errors).toEqual([]);
       const files = readdirSync(outDir).filter(file => file.endsWith('.py'));
