@@ -1,4 +1,4 @@
-import { Entities, clear, getEntityType, measure } from 'farmer';
+import { Entities, clear, getEntityType, measureEntity } from 'farmer';
 
 import * as movement from './movement';
 import * as planting from './planting';
@@ -14,7 +14,7 @@ function scanWorld(): void {
       if (entity !== null) {
         world.setEntity(entity, x, y);
         if (entity === Entities.Sunflower) {
-          world.setEntityPower(measure() as number, x, y);
+          world.setEntityPower(measureEntity(), x, y);
           world.toggleSunflower(true);
         }
       }

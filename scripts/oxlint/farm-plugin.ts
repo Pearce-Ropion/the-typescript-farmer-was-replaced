@@ -280,6 +280,17 @@ const rule = {
         const name: string = node.property.name;
         const object = unwrap(node.object);
 
+        // `value.toString()` is translated to `str(value)`, which works for every value.
+        const parent: Node | undefined = node.parent;
+        if (
+          name === 'toString' &&
+          parent?.type === 'CallExpression' &&
+          parent.callee === node &&
+          parent.arguments.length === 0
+        ) {
+          return;
+        }
+
         if (object.type === 'Identifier' && STATIC_OBJECTS.has(object.name) && isGlobal(object)) {
           const qualified = `${object.name}.${name}`;
           if (!allowed.statics.includes(qualified)) {
@@ -298,14 +309,12 @@ const rule = {
         }
         if (kind === 'object') {
           // Reading a property of an object is a dictionary lookup. Calling one is not possible.
-          const parent: Node | undefined = node.parent;
           const isCall = parent?.type === 'CallExpression' && parent.callee === node;
           if (isCall && !allowed.object.includes(name)) {
             context.report({ node, messageId: 'call', data: { name } });
           }
           return;
         }
-        const parent: Node | undefined = node.parent;
         if (
           kind === 'array' &&
           name === 'splice' &&
@@ -325,6 +334,68 @@ const rule = {
               allowed: list(allowed[kind]),
             },
           });
+        }
+      },
+    };
+  },
+};
+
+const NUMBER_CONVERSIONS = new Set(['Number', 'parseInt', 'parseFloat']);
+const NUMBER_STATICS = new Set(['parseInt', 'parseFloat']);
+
+const noNumberConversion = {
+  meta: {
+    type: 'problem' as const,
+    docs: {
+      description:
+        "Reports conversions to a number, since the game's Python has no int() or float().",
+    },
+    messages: {
+      conversion:
+        "'{{name}}' is not supported: the game's Python has no int() or float(). Numbers are already numbers, so the conversion isn't needed. Use String(value) to convert to text.",
+    },
+    schema: [],
+  },
+
+  create(context: Context) {
+    const isGlobal = (identifier: Node) => {
+      let scope = context.sourceCode.getScope(identifier);
+      while (scope) {
+        const variable = scope.set.get(identifier.name);
+        if (variable && variable.defs.length > 0) {
+          return false;
+        }
+        scope = scope.upper;
+      }
+      return true;
+    };
+    const report = (node: Node, name: string) =>
+      context.report({ node, messageId: 'conversion', data: { name } });
+
+    const checkCallee = (node: Node, callee: Node) => {
+      const target = unwrap(callee);
+      if (target.type === 'Identifier' && NUMBER_CONVERSIONS.has(target.name) && isGlobal(target)) {
+        report(node, target.name);
+      } else if (
+        target.type === 'MemberExpression' &&
+        !target.computed &&
+        target.object.type === 'Identifier' &&
+        target.object.name === 'Number' &&
+        target.property.type === 'Identifier' &&
+        NUMBER_STATICS.has(target.property.name) &&
+        isGlobal(target.object)
+      ) {
+        report(node, `Number.${target.property.name}`);
+      }
+    };
+
+    return {
+      CallExpression: (node: Node) => checkCallee(node, node.callee),
+      NewExpression: (node: Node) => checkCallee(node, node.callee),
+      UnaryExpression(node: Node) {
+        // `+value` is JavaScript's shortest way to convert to a number.
+        if (node.operator === '+') {
+          report(node, '+value');
         }
       },
     };
@@ -378,6 +449,7 @@ export default {
   rules: {
     'no-classes': noClasses,
     'no-lambdas': noLambdas,
+    'no-number-conversion': noNumberConversion,
     'no-unsupported-collection-member': rule,
   },
 };

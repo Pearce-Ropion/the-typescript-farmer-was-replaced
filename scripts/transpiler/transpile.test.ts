@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { ALLOWED_MEMBERS } from './collections.ts';
-import { loadFarmerInfo } from './farmer.ts';
+import { farmerFunctionName, loadFarmerInfo } from './farmer.ts';
 import { pyFunctionName, toSnakeCase } from './naming.ts';
 import { buildProject } from './project.ts';
 import * as pyAst from './py.ts';
@@ -94,8 +94,8 @@ describe('naming', () => {
       'pet_the_piggy',
       'leaderboard_run',
     ];
-    const actual = [...farmer.functions].map(pyFunctionName);
-    expect(actual.toSorted()).toEqual(expected.toSorted());
+    const actual = new Set([...farmer.functions].map(farmerFunctionName));
+    expect([...actual].toSorted()).toEqual(expected.toSorted());
   });
 });
 
@@ -268,6 +268,31 @@ describe('expressions', () => {
       getPosX();
     `);
     expect(out).toBe('move(North)\ne = Entities.Bush\nu = Unlocks.Carrots\nget_pos_x()');
+  });
+
+  it('translates the typed variants of measure back to measure', () => {
+    const out = py(`
+      import { Direction, measure, measureEntity, measurePos } from 'farmer';
+      const petals = measureEntity();
+      const next = measureEntity(Direction.North);
+      const treasure = measurePos();
+      const any = measure();
+    `);
+    expect(out).toBe(
+      'petals = measure()\nnext = measure(North)\ntreasure = measure()\nany = measure()',
+    );
+  });
+
+  it('converts to text with str()', () => {
+    const out = py(`
+      declare const n: number;
+      declare const xs: number[];
+      const a = String(n);
+      const b = n.toString();
+      const c = xs.toString();
+      const d = (n + 1).toString();
+    `);
+    expect(out).toBe('a = str(n)\nb = str(n)\nc = str(xs)\nd = str(n + 1)');
   });
 
   it('translates native arrays, sets and objects', () => {
@@ -516,6 +541,13 @@ describe('errors', () => {
       "import { spawnDrone } from 'farmer'; function f(a: number) { spawnDrone(() => a); }",
       /Closures aren't supported/,
     );
+  });
+
+  it('rejects conversions to a number', () => {
+    fails('const a = Number("1");', /'Number' is not defined or not supported/);
+    fails('const a = parseFloat("1");', /'parseFloat' is not defined or not supported/);
+    fails('const a = +"1";', /Unary \+ converts to a number/);
+    fails('declare const n: number; n.toString(2);', /toString\(\) expects 0/);
   });
 
   it('rejects unsupported methods', () => {

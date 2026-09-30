@@ -3,12 +3,30 @@ import { join } from 'node:path';
 
 import { parseSync } from 'oxc-parser';
 
+import { pyFunctionName } from './naming.ts';
+
 /**
  * The names exported by the `farmer` declaration files, grouped by what they are.
  */
 export interface FarmerInfo {
   functions: Set<string>;
   enums: Set<string>;
+}
+
+/**
+ * Functions that only exist in the declarations, to give one of the game's functions a more precise type.
+ * They are translated to the game's function of that name.
+ */
+const PYTHON_FUNCTION_ALIASES: Record<string, string> = {
+  measureEntity: 'measure',
+  measurePos: 'measure',
+};
+
+/**
+ * The name the game uses for a function of the `farmer` declarations.
+ */
+export function farmerFunctionName(name: string): string {
+  return PYTHON_FUNCTION_ALIASES[name] ?? pyFunctionName(name);
 }
 
 /**

@@ -1,5 +1,6 @@
 import { parseSync } from 'oxc-parser';
 
+import { farmerFunctionName } from './farmer.ts';
 import type { FarmerInfo } from './farmer.ts';
 import { pyFunctionName, pyIdent } from './naming.ts';
 import * as py from './py.ts';
@@ -478,7 +479,7 @@ class FileTranspiler {
 
   private farmerBinding(name: string): Binding | null {
     if (this.farmer.functions.has(name)) {
-      return { type: 'farmerFunction', name: pyFunctionName(name) };
+      return { type: 'farmerFunction', name: farmerFunctionName(name) };
     }
     if (this.farmer.enums.has(name)) {
       return { type: 'farmerEnum', name };
@@ -1579,7 +1580,7 @@ class FileTranspiler {
       case '-':
         return py.negate(this.emitExpr(argument, ctx));
       case '+':
-        return this.emitExpr(argument, ctx);
+        return this.fail(node, "Unary + converts to a number, which the game's Python can't do");
       default:
         return this.fail(node, `The '${node.operator}' operator is not supported`);
     }
@@ -1802,6 +1803,9 @@ class FileTranspiler {
       case 'delete':
         expectArgs(1, 1);
         return method('remove');
+      case 'toString':
+        expectArgs(0, 0);
+        return py.call(py.name('str'), [receiver]);
       case 'shift':
         expectArgs(0, 0);
         return py.call(py.attribute(receiver, 'pop'), [py.constant(0)]);

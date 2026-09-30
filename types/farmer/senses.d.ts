@@ -104,3 +104,38 @@ export declare function getCompanion(): [Entities, [number, number]] | null;
  * ```
  */
 export declare function measure(direction?: Direction): number | [number, number] | null;
+
+/**
+ * Measures the entity under the drone, or the neighbouring entity in the `direction` of the drone,
+ * for entities where the measurement is a number. It is the game's `measure()`, with a return type
+ * that lets the result be used as a number.
+ *
+ * Sunflower: returns the number of petals.
+ * Cactus: returns the size.
+ * Dinosaur: returns the number corresponding to the type.
+ * All other entities: returns `null`.
+ *
+ * takes `1` tick to execute.
+ *
+ * @example
+ * ```ts
+ * const numPetals = measureEntity();
+ * ```
+ */
+export declare function measureEntity(direction?: Direction): number | null;
+
+/**
+ * Measures the position of the current treasure from anywhere in a maze. It is the game's `measure()`,
+ * with a return type that lets the result be used as a position.
+ *
+ * Maze: returns the position of the current treasure.
+ * All other entities: returns `null`.
+ *
+ * takes `1` tick to execute.
+ *
+ * @example
+ * ```ts
+ * const treasurePos = measurePos();
+ * ```
+ */
+export declare function measurePos(direction?: Direction): [number, number] | null;

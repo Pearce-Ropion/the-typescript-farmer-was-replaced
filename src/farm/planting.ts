@@ -8,7 +8,7 @@ import {
   getPosX,
   getPosY,
   harvest,
-  measure,
+  measureEntity,
   numItems,
   plant,
   till,
@@ -20,7 +20,7 @@ import * as world from './world';
 
 let pumpkinSizeRef = 0;
 
-const MIN_SUNFLOWER = 11;
+const MIN_SUNFLOWER = 10;
 const SINGLE_SLOT_ENTITIES: Entities[] = [
   Entities.Grass,
   Entities.Bush,
@@ -90,7 +90,7 @@ export function plantPlant(entity: Entities): void {
   world.setEntity(entity);
   if (entity === Entities.Sunflower) {
     world.toggleSunflower(true);
-    world.setEntityPower(measure() as number);
+    world.setEntityPower(measureEntity());
   }
 }
 
