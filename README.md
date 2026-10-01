@@ -114,7 +114,7 @@ Anything else stops that file with an error that points at the line.
 
 **Supported**
 
-- functions (declarations, with default and rest parameters), `if`/`else`, `while`, `do...while`, `for`, `for...of`,
+- functions (declarations, with default and rest parameters), `if`/`else`, `while`, `for`, `for...of`,
   `for...in`, `break`, `continue` and `return`
 - `for (let i = a; i < b; i++)` loops are written as `for i in range(...)`
 - numbers, strings, booleans, `null`, template literals, destructuring of arrays, and the usual operators
@@ -132,6 +132,7 @@ Anything else stops that file with an error that points at the line.
 | --------------------------------------------------- | -------------------------------------------------- |
 | classes                                             | functions and plain objects                        |
 | arrow functions and function expressions            | named functions                                    |
+| `do { ... } while (x)`                              | `while`                                            |
 | `a ? b : c`                                         | `if` / `else`                                      |
 | `Number(x)`, `parseInt`, `parseFloat`, `+x`         | nothing: numbers are already numbers               |
 | `x as T`, `<T>x` and `x!`                           | real code that converts the value                  |

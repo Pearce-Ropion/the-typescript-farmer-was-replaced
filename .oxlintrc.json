@@ -21,7 +21,8 @@
         ],
         "typescript/no-non-null-assertion": "error",
         "no-ternary": "error",
-        "farm/flat-modules": "error"
+        "farm/flat-modules": "error",
+        "farm/no-do-while": "error"
       },
       "excludeFiles": ["**/__tests__/**", "**/*.test.ts"]
     }

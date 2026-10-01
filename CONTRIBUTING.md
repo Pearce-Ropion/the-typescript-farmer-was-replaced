@@ -96,6 +96,7 @@ rules in `scripts/oxlint`, all configured in `.oxlintrc.json` (`overrides` for
 | Rule                                                                                      | Reports                                                                    |
 | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | `farm/no-classes`                                                                         | classes                                                                    |
+| `farm/no-do-while`                                                                        | `do...while` loops                                                         |
 | `farm/no-lambdas`                                                                         | arrow functions and function expressions                                   |
 | `farm/no-number-conversion`                                                               | `Number()`, `parseInt`, `parseFloat` and unary `+`                         |
 | `farm/no-unsupported-collection-member`                                                   | array, set and object members that the game doesn't have                   |
