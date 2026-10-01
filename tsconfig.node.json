@@ -6,9 +6,5 @@
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
     "types": ["node", "vitest/globals"]
   },
-  "include": [
-    "scripts",
-    "vitest.config.ts",
-    "saves/**/__tests__/**/*.ts",
-  ]
+  "include": ["scripts", "vitest.config.ts", "saves/**/__tests__/**/*.ts"]
 }
