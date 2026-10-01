@@ -14,6 +14,16 @@ yarn types && yarn lint && yarn coverage   # everything should pass before you c
 
 The scripts run TypeScript directly on Node, so there is no build step for the tooling itself.
 
+### Editor
+
+If you use VS Code, accept the recommended extensions (`.vscode/extensions.json`) when it asks:
+
+- **Oxc** (`oxc.oxc-vscode`) runs oxlint and oxfmt in the editor, using the project's configuration.
+- **Vitest** (`vitest.explorer`) lists the tests and runs or debugs them from the editor.
+
+Run `yarn lint` and `yarn format` for the saves, because the tools skip git-ignored files unless they are named
+(see "Why `with-saves`" below).
+
 ## How it works
 
 The tool turns the TypeScript of each save into Python that the game can run:
@@ -95,15 +105,15 @@ rules in `scripts/oxlint`, all configured in `.oxlintrc.json` (`overrides` for
 
 | Rule                                                                                      | Reports                                                                    |
 | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `farm/no-classes`                                                                         | classes                                                                    |
-| `farm/no-do-while`                                                                        | `do...while` loops                                                         |
-| `farm/no-lambdas`                                                                         | arrow functions and function expressions                                   |
-| `farm/no-number-conversion`                                                               | `Number()`, `parseInt`, `parseFloat` and unary `+`                         |
-| `farm/no-unsupported-collection-member`                                                   | array, set and object members that the game doesn't have                   |
-| `farm/flat-modules`                                                                       | imports other than `'farmer'` and `./sibling`, and files in subdirectories |
+| `typescript-farmer/no-classes`                                                            | classes                                                                    |
+| `typescript-farmer/no-do-while`                                                           | `do...while` loops                                                         |
+| `typescript-farmer/no-lambdas`                                                            | arrow functions and function expressions                                   |
+| `typescript-farmer/no-number-conversion`                                                  | `Number()`, `parseInt`, `parseFloat` and unary `+`                         |
+| `typescript-farmer/no-unsupported-collection-member`                                      | array, set and object members that the game doesn't have                   |
+| `typescript-farmer/flat-modules`                                                          | imports other than `'farmer'` and `./sibling`, and files in subdirectories |
 | `no-ternary`, `typescript/consistent-type-assertions`, `typescript/no-non-null-assertion` | oxlint's own rules                                                         |
 
-`farm/no-unsupported-collection-member` has to work out what kind of value a
+`typescript-farmer/no-unsupported-collection-member` has to work out what kind of value a
 variable holds without type information, so it follows annotations and
 initialisers within one file. The members it allows are in
 `scripts/transpiler/collections.ts`, which a test checks against the transpiler, so the two can't drift apart.

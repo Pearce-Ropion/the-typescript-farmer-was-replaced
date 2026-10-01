@@ -144,9 +144,8 @@ variable or a member (`a?.b`, `a.b?.c`), not the result of a call.
 
 ### Linting
 
-`yarn lint` checks the code of your saves for these things, (and your editor will too if it supports oxlint), and
-`yarn format` formats it. The game-specific rules are the `farm/*` rules and a
-few of oxlint's own; each message says what to write instead.
+`yarn lint` checks the code of your saves for the things above, and `yarn format` formats it. The game-specific rules
+are the `typescript-farmer/*` rules and a few of oxlint's own; each message says what to write instead.
 
 ### Keeping your saves in git
 

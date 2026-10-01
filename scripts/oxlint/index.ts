@@ -9,7 +9,7 @@ import noUnsupportedCollectionMember from './rules/no-unsupported-collection-mem
  * The lint rules for the TypeScript that is translated to the game's Python.
  */
 export default {
-  meta: { name: 'farm' },
+  meta: { name: 'typescript-farmer' },
   rules: {
     'flat-modules': flatModules,
     'no-classes': noClasses,

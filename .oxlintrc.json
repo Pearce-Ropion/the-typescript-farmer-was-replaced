@@ -9,10 +9,10 @@
     {
       "files": ["saves/**/*.ts"],
       "rules": {
-        "farm/no-unsupported-collection-member": "error",
-        "farm/no-classes": "error",
-        "farm/no-lambdas": "error",
-        "farm/no-number-conversion": "error",
+        "typescript-farmer/no-unsupported-collection-member": "error",
+        "typescript-farmer/no-classes": "error",
+        "typescript-farmer/no-lambdas": "error",
+        "typescript-farmer/no-number-conversion": "error",
         "typescript/consistent-type-assertions": [
           "error",
           {
@@ -21,8 +21,8 @@
         ],
         "typescript/no-non-null-assertion": "error",
         "no-ternary": "error",
-        "farm/flat-modules": "error",
-        "farm/no-do-while": "error"
+        "typescript-farmer/flat-modules": "error",
+        "typescript-farmer/no-do-while": "error"
       },
       "excludeFiles": ["**/__tests__/**", "**/*.test.ts"]
     }
