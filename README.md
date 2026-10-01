@@ -142,6 +142,45 @@ Anything else stops that file with an error that points at the line.
 `a ?? b` and `a?.b` do work. They are written as `if` statements, and the value in front of a `?.` has to be a
 variable or a member (`a?.b`, `a.b?.c`), not the result of a call.
 
+### The game's API
+
+Everything the game offers is imported from `'farmer'`, and `types/farmer/` has the types and a description of every
+function. Names follow JavaScript conventions and are translated back to the game's names when the Python is written:
+
+| In TypeScript                 | In the game                    |
+| ----------------------------- | ------------------------------ |
+| `getPosX()`, `canHarvest()`   | `get_pos_x()`, `can_harvest()` |
+| `Entities.Grass`, `Items.Hay` | `Entities.Grass`, `Items.Hay`  |
+| `Direction.North`             | `North`                        |
+| `Unlocks.Carrots`             | `Unlocks.Carrots`              |
+
+#### Typed variants
+
+Some game functions return different kinds of values depending on what they are used on, which makes the result awkward
+to use in TypeScript. For those, the API also has more precise variants. They only exist in TypeScript: each one is
+written as the game's own function, so the Python is the same whichever you use.
+
+| Function                    | Returns                              | Use it for                                                               | Python      |
+| --------------------------- | ------------------------------------ | ------------------------------------------------------------------------ | ----------- |
+| `measure(direction?)`       | `number \| [number, number] \| null` | anything; you have to check what you got                                 | `measure()` |
+| `measureEntity(direction?)` | `number \| null`                     | the number of a sunflower's petals, a cactus's size or a dinosaur's type | `measure()` |
+| `measurePos(direction?)`    | `[number, number] \| null`           | the position of the treasure in a maze                                   | `measure()` |
+
+```ts
+import { measureEntity, measurePos } from 'farmer';
+
+const petals = measureEntity(); // number | null: never a position
+const treasure = measurePos(); // [number, number] | null: never a plain number
+```
+
+```python
+petals = measure()
+treasure = measure()
+```
+
+Pick the variant that matches what you are measuring. The types are all the checking there is: the game decides at
+runtime what `measure()` returns, so `measureEntity()` on a maze still gives a position.
+
 ### Linting
 
 `yarn lint` checks the code of your saves for the things above, and `yarn format` formats it. The game-specific rules
