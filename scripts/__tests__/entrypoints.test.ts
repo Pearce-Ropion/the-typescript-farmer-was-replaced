@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -28,6 +28,24 @@ describe('scripts/build.ts', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('the the-typescript-farmer binary', () => {
+  it('runs as a program of its own, because the script has a shebang and is executable', () => {
+    const result = spawnSync(join(root, 'scripts/build.ts'), ['--help'], {
+      cwd: tmpdir(),
+      encoding: 'utf8',
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Usage: the-typescript-farmer [options] [saves...]');
+  });
+
+  it('is the bin of the package, so the command is named after the package', () => {
+    const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+    expect(pkg.name).toBe('the-typescript-farmer');
+    // A bin that is a string is named after the package.
+    expect(pkg.bin).toBe('./scripts/build.ts');
   });
 });
 

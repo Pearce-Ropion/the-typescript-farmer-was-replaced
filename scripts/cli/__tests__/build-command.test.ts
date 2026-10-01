@@ -197,7 +197,7 @@ describe('invalid use', () => {
     await withWorkspace(workspace => {
       const { lines, output } = capture();
       expect(run(['--help'], { root: workspace.root, output }).exitCode).toBe(0);
-      expect(lines.log[0]).toContain('Usage: build [options] [saves...]');
+      expect(lines.log[0]).toContain('Usage: the-typescript-farmer [options] [saves...]');
       expect(lines.log[0]).toContain('--watch');
       expect(lines.log[0]).toContain('--saves <dir>');
       expect(lines.log[0]).toContain('--out <dir>');

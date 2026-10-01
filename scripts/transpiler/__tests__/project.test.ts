@@ -99,6 +99,47 @@ describe('buildProject', () => {
     });
   });
 
+  it('never removes __builtins__.py, even if it looks generated', () => {
+    withProject(project => {
+      project.write('a.ts', 'export const a = 1;\n');
+      mkdirSync(project.outDir);
+      const builtins = join(project.outDir, '__builtins__.py');
+      writeFileSync(
+        builtins,
+        '# Generated from TypeScript. Do not edit; edit the source and rebuild.\n',
+      );
+      writeFileSync(
+        join(project.outDir, 'stale.py'),
+        '# Generated from TypeScript. Do not edit.\n',
+      );
+
+      const result = buildProject(project);
+      expect(result.removed.map(path => path.split('/').pop())).toEqual(['stale.py']);
+      expect(outputs(project.outDir)).toEqual(['__builtins__.py', 'a.py']);
+    });
+  });
+
+  it('refuses to build a source that would overwrite __builtins__.py', () => {
+    withProject(project => {
+      project.write('a.ts', 'export const a = 1;\n');
+      project.write('__builtins__.ts', 'export const b = 2;\n');
+      mkdirSync(project.outDir);
+      const builtins = join(project.outDir, '__builtins__.py');
+      writeFileSync(builtins, "# the game's own file\n");
+
+      const result = buildProject(project);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].message).toBe(
+        `${join(project.srcDir, '__builtins__.ts')}:1:1: __builtins__.py is the game's own file, so __builtins__.ts can't be built to it. Rename the source`,
+      );
+      expect(readFileSync(builtins, 'utf8')).toBe("# the game's own file\n");
+      expect(outputs(project.outDir)).toEqual(['__builtins__.py', 'a.py']);
+      // It is the source that is wrong, not an old build of it.
+      expect(result.stale).toEqual([]);
+      expect(result.written.map(path => path.split('/').pop())).toEqual(['a.py']);
+    });
+  });
+
   it('creates the output directory', () => {
     withProject(project => {
       project.write('a.ts', 'export const a = 1;\n');
@@ -151,6 +192,22 @@ describe('pruneSaves', () => {
       expect(removed).toEqual([join(outDir, 'gone/generated.py')]);
       expect(readdirSync(join(outDir, 'gone')).toSorted()).toEqual(['handwritten.py', 'notes.txt']);
       expect(readdirSync(outDir).toSorted()).toEqual(['gone', 'loose-file.txt']);
+    });
+  });
+
+  it('never removes __builtins__.py, even from the output of a save that is gone', () => {
+    withProject(project => {
+      const savesDir = join(project.srcDir, '..', 'saves');
+      const outDir = join(project.srcDir, '..', 'builds');
+      mkdirSync(savesDir, { recursive: true });
+      mkdirSync(join(outDir, 'gone'), { recursive: true });
+      const header = '# Generated from TypeScript. Do not edit; edit the source and rebuild.\n';
+      writeFileSync(join(outDir, 'gone/__builtins__.py'), header);
+      writeFileSync(join(outDir, 'gone/main.py'), header);
+
+      const removed = pruneSaves({ savesDir, outDir, farmerDir: project.farmerDir });
+      expect(removed).toEqual([join(outDir, 'gone/main.py')]);
+      expect(readdirSync(join(outDir, 'gone'))).toEqual(['__builtins__.py']);
     });
   });
 

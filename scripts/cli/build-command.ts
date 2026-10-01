@@ -56,7 +56,7 @@ export function run(argv: string[], context: RunContext): RunResult {
   const display = (path: string) => relative(root, path);
 
   const program = new Command()
-    .name('build')
+    .name('the-typescript-farmer')
     .description(
       "Transpiles the TypeScript of each save in the saves directory to the game's Python.",
     )

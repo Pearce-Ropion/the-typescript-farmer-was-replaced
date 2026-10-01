@@ -25,5 +25,8 @@
       },
       "excludeFiles": ["**/__tests__/**", "**/*.test.ts"]
     }
-  ]
+  ],
+  "options": {
+    "typeAware": true
+  }
 }

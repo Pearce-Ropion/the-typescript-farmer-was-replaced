@@ -1,13 +1,14 @@
 {
-  "name": "ts-farmer-was-replaced",
+  "name": "the-typescript-farmer",
+  "bin": "./scripts/build.ts",
   "type": "module",
   "scripts": {
     "build": "node scripts/build.ts",
     "coverage": "vitest run --coverage",
     "dev": "node scripts/build.ts --watch",
     "format": "node scripts/with-saves.ts oxfmt",
-    "lint": "node scripts/with-saves.ts oxlint --type-aware",
-    "lint:fix": "node scripts/with-saves.ts oxlint --type-aware --fix",
+    "lint": "node scripts/with-saves.ts oxlint",
+    "lint:fix": "node scripts/with-saves.ts oxlint --fix",
     "test": "vitest",
     "types": "tsc -b"
   },
