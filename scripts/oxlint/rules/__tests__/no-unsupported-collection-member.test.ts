@@ -112,3 +112,75 @@ tester.run('no-unsupported-collection-member', rule, {
     },
   ],
 });
+
+// How the rule works out what kind of collection a value is.
+tester.run('no-unsupported-collection-member (types of values)', rule, {
+  valid: [
+    // Anything it cannot work out is left alone.
+    ts('function f(x: string | number) { x.foo(); }'),
+    ts('function f(x: ns.Collection) { x.foo(); }'),
+    ts('const thing = new Foo(); thing.bar();'),
+    ts('const thing = new ns.Thing(); thing.bar();'),
+    // Values taken apart by destructuring are not tracked.
+    ts('declare const xs: number[][]; const [first] = xs; first.foo();'),
+    ts('declare const o: { a: number[] }; const { a } = o; a.foo();'),
+    ts('foo.bar().map(g);'),
+    ts('Object["keys"]({}).map(g);'),
+    ts('(1 + 2).foo();'),
+    ts('unknownVariable.foo();'),
+    ts('unknownFunction().foo();'),
+    ts('const value = 1; value().foo();'),
+    ts('let later; later().foo();'),
+    // The result of the same unknown value is remembered.
+    ts('const u = unknownThing(); u.a(); u.b();'),
+    // A value defined in terms of itself has no kind.
+    ts('const a = b; const b = a; a.foo();'),
+  ],
+  invalid: [
+    {
+      ...ts('function f(o: { a: number }) { o.foo(); }'),
+      errors: [{ messageId: 'call' }],
+    },
+    {
+      ...ts('function f(xs: readonly number[]) { xs.map(g); }'),
+      errors: [{ messageId: 'member' }],
+    },
+    {
+      ...ts('function f(xs: number[] | null) { xs?.map(g); }'),
+      errors: [{ messageId: 'member' }],
+    },
+    {
+      ...ts(`
+        function f(a: Partial<number[]>, b: Readonly<Set<number>>, c: Required<Record<string, number>>) {
+          a.map(g);
+          b.clear();
+          c.hasOwnProperty('x');
+        }
+      `),
+      errors: [{ messageId: 'member' }, { messageId: 'member' }, { messageId: 'call' }],
+    },
+    { ...ts('const a = new Array(3); a.map(g);'), errors: [{ messageId: 'member' }] },
+    { ...ts('const keys = Object.keys({}); keys.map(g);'), errors: [{ messageId: 'member' }] },
+    {
+      ...ts('const make = (): number[] => []; make().map(g);'),
+      errors: [{ messageId: 'member' }],
+    },
+    {
+      ...ts('const make = function (): Set<number> { return new Set(); }; make().clear();'),
+      errors: [{ messageId: 'member' }],
+    },
+    { ...ts('function f(...args: number[]) { args.map(g); }'), errors: [{ messageId: 'member' }] },
+    { ...ts('function f(...args) { args.map(g); }'), errors: [{ messageId: 'member' }] },
+    {
+      // Naming nothing as allowed leaves nothing to suggest.
+      ...ts('const xs = [1]; xs.push(1);'),
+      options: [{ array: [] }],
+      errors: [
+        {
+          messageId: 'member',
+          data: { name: 'push', kind: 'arrays', allowed: 'nothing' },
+        },
+      ],
+    },
+  ],
+});

@@ -30,8 +30,8 @@ export const constant = (value: string | number | boolean | null): PyNode =>
 
 export const none = (): PyNode => constant(null);
 
-export const attribute = (value: PyNode, attr: string, store = false): PyNode =>
-  node('Attribute', { value, attr, ctx: node(store ? 'Store' : 'Load') });
+export const attribute = (value: PyNode, attr: string): PyNode =>
+  node('Attribute', { value, attr, ctx: node('Load') });
 
 export const subscript = (value: PyNode, slice: PyNode, store = false): PyNode =>
   node('Subscript', { value, slice, ctx: node(store ? 'Store' : 'Load') });
@@ -63,9 +63,6 @@ export const boolOp = (op: 'And' | 'Or', left: PyNode, right: PyNode): PyNode =>
 export const list = (elts: PyNode[]): PyNode => node('List', { elts, ctx: node('Load') });
 
 export const set = (elts: PyNode[]): PyNode => node('Set', { elts });
-
-export const tuple = (elts: PyNode[], store = false): PyNode =>
-  node('Tuple', { elts, ctx: node(store ? 'Store' : 'Load') });
 
 export const dict = (keys: PyNode[], values: PyNode[]): PyNode => node('Dict', { keys, values });
 

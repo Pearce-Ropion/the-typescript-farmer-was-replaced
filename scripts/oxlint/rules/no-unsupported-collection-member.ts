@@ -132,8 +132,6 @@ const rule = {
           return 'array';
         case 'ObjectExpression':
           return 'object';
-        case 'ChainExpression':
-          return kindOfExpression(node.expression);
         case 'NewExpression':
           if (node.callee.type === 'Identifier') {
             if (node.callee.name === 'Set') {

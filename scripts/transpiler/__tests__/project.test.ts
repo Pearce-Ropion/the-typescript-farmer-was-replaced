@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { buildProject } from '../project.ts';
+import { buildProject, pruneSaves } from '../project.ts';
 
 import { root } from './helpers.ts';
 
@@ -128,6 +128,41 @@ describe('buildProject', () => {
       const result = buildProject(project);
       expect(result.errors).toHaveLength(1);
       expect(result.stale).toEqual([]);
+    });
+  });
+});
+
+describe('pruneSaves', () => {
+  it('leaves files that were not generated, and the directory they are in', () => {
+    withProject(project => {
+      const savesDir = join(project.srcDir, '..', 'saves');
+      const outDir = join(project.srcDir, '..', 'builds');
+      mkdirSync(join(savesDir, 'kept'), { recursive: true });
+      mkdirSync(join(outDir, 'gone'), { recursive: true });
+      writeFileSync(
+        join(outDir, 'gone/generated.py'),
+        '# Generated from TypeScript. Do not edit; edit the source and rebuild.\nx = 1\n',
+      );
+      writeFileSync(join(outDir, 'gone/handwritten.py'), 'print("mine")\n');
+      writeFileSync(join(outDir, 'gone/notes.txt'), 'notes\n');
+      writeFileSync(join(outDir, 'loose-file.txt'), 'not a directory\n');
+
+      const removed = pruneSaves({ savesDir, outDir, farmerDir: project.farmerDir });
+      expect(removed).toEqual([join(outDir, 'gone/generated.py')]);
+      expect(readdirSync(join(outDir, 'gone')).toSorted()).toEqual(['handwritten.py', 'notes.txt']);
+      expect(readdirSync(outDir).toSorted()).toEqual(['gone', 'loose-file.txt']);
+    });
+  });
+
+  it('has nothing to do before anything was built', () => {
+    withProject(project => {
+      expect(
+        pruneSaves({
+          savesDir: project.srcDir,
+          outDir: join(project.outDir, 'x'),
+          farmerDir: project.farmerDir,
+        }),
+      ).toEqual([]);
     });
   });
 });

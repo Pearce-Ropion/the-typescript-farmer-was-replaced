@@ -259,7 +259,7 @@ class FileTranspiler {
   private readonly hoisted: PyNode[] = [];
   private arrowCount = 0;
   private keyCount = 0;
-  private guards: PyNode[] | null = null;
+  private guards: PyNode[] = [];
   private pre: PyNode[] = [];
   private tempCount = 0;
 
@@ -1012,15 +1012,8 @@ class FileTranspiler {
       case 'Identifier':
       case 'Literal':
         return true;
-      case 'ChainExpression':
-        return this.isPure(value.expression);
       case 'MemberExpression':
         return this.isPure(value.object) && (!value.computed || this.isPure(value.property));
-      case 'UnaryExpression':
-        return value.operator !== 'delete' && this.isPure(value.argument);
-      case 'BinaryExpression':
-      case 'LogicalExpression':
-        return this.isPure(value.left) && this.isPure(value.right);
       default:
         return false;
     }
@@ -1133,9 +1126,7 @@ class FileTranspiler {
           lines.push(py.assign(target, init ? this.emitExpr(init, ctx) : py.none()));
         }
       } else if (id.type === 'ArrayPattern') {
-        if (!declarator.init) {
-          this.fail(declarator, 'A destructuring declaration needs a value');
-        }
+        // The parser rejects a destructuring declaration without a value.
         lines.push(...this.emitDestructure(id, declarator.init, ctx, false));
       } else {
         this.fail(declarator, 'Object destructuring is not supported');
@@ -1232,11 +1223,7 @@ class FileTranspiler {
             this.fail(node, `Cannot assign to '${node.name}'`);
           }
         }
-        const id =
-          binding?.type === 'variable' || binding?.type === 'local'
-            ? binding.name
-            : pyIdent(node.name);
-        return py.name(id, true);
+        return py.name(pyIdent(node.name), true);
       }
       case 'MemberExpression': {
         if (this.resolveStatic(node, ctx)) {
@@ -1371,10 +1358,6 @@ class FileTranspiler {
         const inner = this.withPre(() => this.emitExpr(value.expression, ctx));
         const guards = this.guards;
         this.guards = previous;
-        if (!guards.length) {
-          this.pre.push(...inner.pre);
-          return inner.value;
-        }
         const temp = this.newTemp();
         const test = guards.reduce((all, guard) => py.boolOp('And', all, guard));
         this.pre.push(
@@ -1575,7 +1558,7 @@ class FileTranspiler {
   private emitObjectOf(node: Node, ctx: Ctx): PyNode {
     const object = this.emitExpr(node.object, ctx);
     if (node.optional) {
-      if (!this.isPure(node.object) || !this.guards) {
+      if (!this.isPure(node.object)) {
         this.fail(node, 'Store this value in a variable first. `?.` needs to read it twice');
       }
       this.guards.push(py.compare(object, 'NotEq', py.none()));
@@ -1723,7 +1706,9 @@ export function transpileProject(files: SourceFile[], farmer: FarmerInfo): Trans
     });
     if (result.errors.length) {
       const [error] = result.errors;
-      const { line, column } = locate(file.source, error.labels[0]?.start ?? 0);
+      // Every syntax error from the parser has at least one label, which holds its position in the file,
+      // so the first label can be used to report the line and column.
+      const { line, column } = locate(file.source, error.labels[0].start);
       errors.push(new TranspileError(error.message, file.path, line, column));
       unparsable.add(file.name);
       continue;

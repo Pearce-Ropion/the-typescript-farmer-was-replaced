@@ -66,3 +66,15 @@ type comes from another file can't be checked there. The transpiler still reject
   of it, and the build and the farm lint rules skip them.
 
 Both extend `tsconfig.base.json`, which has the options they share.
+
+## Tests and coverage
+
+```sh
+yarn test       # run the tests in watch mode
+yarn coverage   # run them once and print a coverage report (also written to coverage/ as HTML)
+```
+
+Coverage uses Vitest's `v8` provider and covers `scripts/`, and `yarn coverage` fails unless statements, branches,
+functions and lines are all at 100%. The two scripts that only start a command (`scripts/build.ts` and
+`scripts/with-saves.ts`) are left out. Their commands live in `scripts/cli/`, which the tests call directly. Where a
+branch can't be reached, prefer deleting it over a `/* v8 ignore */` comment.

@@ -3,6 +3,7 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.ts",
+    "coverage": "vitest run --coverage",
     "dev": "node scripts/build.ts --watch",
     "format": "node scripts/with-saves.ts oxfmt",
     "lint": "node scripts/with-saves.ts oxlint --type-aware",
@@ -12,6 +13,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
+    "@vitest/coverage-v8": "5.0.2",
     "commander": "^15.0.0",
     "oxc-parser": "^0.152.0",
     "oxfmt": "^0.71.0",

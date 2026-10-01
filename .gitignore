@@ -15,3 +15,6 @@ builds
 # Your saves' TypeScript is ignored by default. Remove or comment out the next line
 # if you want to version control your saves yourself.
 saves/*
+
+# Test coverage reports
+coverage

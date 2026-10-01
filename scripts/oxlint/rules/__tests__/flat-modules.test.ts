@@ -11,6 +11,8 @@ tester.run('flat-modules', rule, {
     ts("import type { Entities } from 'farmer';"),
     ts("export { a } from './world';"),
     ts('export const a = 1;'),
+    // require without a path to check, and other functions with a string.
+    ts("require(); other('../x');"),
     inSave("import { a } from './world';"),
     inSave('export const a = 1;', 'saves/save-1/world.ts'),
     inSave('export const a = 1;', '/home/me/project/saves/save-2/world.ts'),
