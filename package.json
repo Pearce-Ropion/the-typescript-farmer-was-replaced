@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.ts",
+    "build:watch": "node scripts/build.ts --watch",
     "coverage": "vitest run --coverage",
     "dev": "node scripts/build.ts --watch",
     "format": "node scripts/with-saves.ts oxfmt",
