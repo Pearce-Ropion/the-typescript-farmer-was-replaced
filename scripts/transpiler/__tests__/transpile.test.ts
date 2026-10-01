@@ -1,103 +1,14 @@
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
-
-import { describe, expect, it } from 'vitest';
+import { join } from 'node:path';
 
 import { ALLOWED_MEMBERS } from '../collections.ts';
-import { farmerFunctionName, loadFarmerInfo } from '../farmer.ts';
-import { pyFunctionName, toSnakeCase } from '../naming.ts';
 import { buildProject, buildSaves, listSaves, pruneSaves } from '../project.ts';
 import * as pyAst from '../py.ts';
 import { transpileProject } from '../transpile.ts';
 
-const root = resolve(import.meta.dirname, '../../..');
-const farmer = loadFarmerInfo(join(root, 'types/farmer'));
-
-/** Transpiles `source` as the module `main` and returns the Python without the header. */
-function py(source: string, others: Record<string, string> = {}): string {
-  const files = Object.entries({ main: source, ...others }).map(([name, code]) => ({
-    name,
-    path: `${name}.ts`,
-    source: code,
-  }));
-  const { outputs, errors } = transpileProject(files, farmer);
-  if (errors.length) {
-    throw errors[0];
-  }
-  const code = outputs.find(output => output.name === 'main')!.code;
-  // The tests write nested blocks with tabs, which is easier to read than four spaces.
-  return code
-    .split('\n')
-    .slice(2)
-    .join('\n')
-    .trim()
-    .replace(/^( {4})+/gm, indent => '\t'.repeat(indent.length / 4));
-}
-
-const IMPORT = "import { move, Direction, Entities } from 'farmer';\n";
-
-describe('naming', () => {
-  it('converts camelCase to snake_case', () => {
-    expect(toSnakeCase('getPosX')).toBe('get_pos_x');
-    expect(toSnakeCase('doAFlip')).toBe('do_a_flip');
-    expect(toSnakeCase('quickPrint')).toBe('quick_print');
-    expect(toSnakeCase('print')).toBe('print');
-  });
-
-  it('avoids python keywords', () => {
-    expect(pyFunctionName('pass')).toBe('pass_');
-  });
-
-  it('maps every function of the game API to its python name', () => {
-    const expected = [
-      'harvest',
-      'can_harvest',
-      'plant',
-      'swap',
-      'till',
-      'use_item',
-      'clear',
-      'change_hat',
-      'move',
-      'can_move',
-      'get_pos_x',
-      'get_pos_y',
-      'get_world_size',
-      'get_entity_type',
-      'get_ground_type',
-      'get_water',
-      'num_items',
-      'get_companion',
-      'measure',
-      'spawn_drone',
-      'wait_for',
-      'has_finished',
-      'max_drones',
-      'num_drones',
-      'get_time',
-      'get_tick_count',
-      'set_execution_speed',
-      'set_world_size',
-      'simulate',
-      'get_cost',
-      'unlock',
-      'num_unlocked',
-      'random',
-      'min',
-      'max',
-      'abs',
-      'print',
-      'quick_print',
-      'do_a_flip',
-      'pet_the_piggy',
-      'leaderboard_run',
-    ];
-    const actual = new Set([...farmer.functions].map(farmerFunctionName));
-    expect([...actual].toSorted()).toEqual(expected.toSorted());
-  });
-});
+import { IMPORT, farmer, fails, py, root } from './helpers.ts';
 
 describe('statements', () => {
   it('translates functions, conditionals and loops', () => {
@@ -523,11 +434,6 @@ describe('modules', () => {
 });
 
 describe('errors', () => {
-  const fails = (source: string, message: RegExp) => {
-    const { errors } = transpileProject([{ name: 'main', path: 'main.ts', source }], farmer);
-    expect(errors[0]?.message).toMatch(message);
-  };
-
   it('reports the location of unsupported syntax', () => {
     fails('const a = 1;\nclass A {}', /main\.ts:2:1: ClassDeclaration is not supported/);
   });
@@ -560,17 +466,45 @@ describe('errors', () => {
 });
 
 describe('project', () => {
-  it('builds saves/save-1 into valid python', () => {
-    const outDir = mkdtempSync(join(tmpdir(), 'farm-build-'));
+  it('builds a small save into valid python', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'farm-build-'));
+    const srcDir = join(dir, 'save');
+    const outDir = join(dir, 'out');
+    mkdirSync(srcDir);
     try {
-      const result = buildProject({
-        srcDir: join(root, 'saves/save-1'),
-        outDir,
-        farmerDir: join(root, 'types/farmer'),
-      });
+      writeFileSync(
+        join(srcDir, 'counter.ts'),
+        `
+        import { move, Direction, getPosX } from 'farmer';
+
+        let steps = 0;
+
+        export function walk(count: number, direction = Direction.East): number {
+          for (let i = 0; i < count; i++) {
+            if (move(direction)) {
+              steps += 1;
+            }
+          }
+          return steps + getPosX();
+        }
+        `,
+      );
+      writeFileSync(
+        join(srcDir, 'main.ts'),
+        `
+        import * as counter from './counter';
+
+        const [first, second] = [counter.walk(2), counter.walk(3)];
+        while (first < second) {
+          counter.walk(1);
+        }
+        `,
+      );
+
+      const result = buildProject({ srcDir, outDir, farmerDir: join(root, 'types/farmer') });
       expect(result.errors).toEqual([]);
       const files = readdirSync(outDir).filter(file => file.endsWith('.py'));
-      expect(files).toContain('main.py');
+      expect(files.toSorted()).toEqual(['counter.py', 'main.py']);
 
       const python = spawnSync('python3', ['--version']);
       if (python.status === 0) {
@@ -584,7 +518,7 @@ describe('project', () => {
         }
       }
     } finally {
-      rmSync(outDir, { recursive: true, force: true });
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

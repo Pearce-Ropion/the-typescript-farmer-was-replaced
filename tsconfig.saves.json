@@ -1,0 +1,11 @@
+{
+  // The TypeScript of the saves, which is translated to the game's Python. It only knows about the game's API.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.saves.tsbuildinfo",
+    "types": []
+  },
+  "include": ["saves", "types"],
+  // Tests run on Node, so they belong to tsconfig.node.json.
+  "exclude": ["**/__tests__/**"]
+}

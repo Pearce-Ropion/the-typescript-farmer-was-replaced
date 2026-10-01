@@ -242,6 +242,9 @@ export { HEADER as GENERATED_HEADER };
 export function printModule(module: PyNode): string {
   assertSupported(module);
   const statements = module.body as PyNode[];
+  if (!statements.length) {
+    return `${HEADER}\n`;
+  }
   let out = `${HEADER}\n`;
   statements.forEach((statement, index) => {
     const previous = statements[index - 1];

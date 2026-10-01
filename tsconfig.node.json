@@ -1,0 +1,14 @@
+{
+  // The tooling that runs on Node: the build script, the transpiler, the lint rules, and every test, including
+  // the tests of a save or of the game's API.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+    "types": ["node", "vitest/globals"]
+  },
+  "include": [
+    "scripts",
+    "vitest.config.ts",
+    "saves/**/__tests__/**/*.ts",
+  ]
+}

@@ -53,7 +53,9 @@ function build(saves: string[]): boolean {
     return runBuild(saves);
   } catch (error) {
     // Don't let an unexpected failure (such as an unreadable folder) end the watcher.
-    console.error(`error ${error instanceof Error ? (error.stack ?? error.message) : error}`);
+    console.error(
+      `error ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
+    );
     return false;
   }
 }

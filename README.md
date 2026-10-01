@@ -13,6 +13,10 @@ Each `saves/<save>/<name>.ts` becomes `builds/<save>/<name>.py`. The game's API 
 (see `types/farmer/`), and function names are converted to `snake_case`. A save that is deleted has its generated
 Python removed on the next build.
 
+Your saves are git-ignored by default (see `.gitignore`; remove the `saves/*` line to version control them yourself).
+The linter and formatter skip git-ignored files when they search folders, so `yarn lint` and `yarn format` pass the
+files of the saves to them by name (`scripts/with-saves.ts`). Run the tools through those scripts to include the saves.
+
 Only the parts of TypeScript that map onto the game's Python are supported:
 
 - functions (declarations and top level `const f = () => {}`), `if`/`else`, `while`, `do...while`,
@@ -49,3 +53,16 @@ Ternaries are reported by oxlint's `no-ternary` rule (use `if`/`else`). Type ass
 and `typescript/no-non-null-assertion` rules, so values are converted with real code instead of being cast. The `farm/no-unsupported-collection-member` oxlint rule (one file per rule in `scripts/oxlint/rules/`, registered in `scripts/oxlint/index.ts` and enabled for `saves/`)
 reports any other member as you type. It works from annotations and initialisers in the same file, so values whose
 type comes from another file can't be checked there. The transpiler still rejects them.
+
+## TypeScript projects
+
+`tsconfig.json` only lists two projects (run `yarn types` to check both):
+
+- `tsconfig.node.json`: the tooling that runs on Node, which is everything in `scripts/` (the build script, the
+  transpiler, the lint rules) and every Vitest test and the Vitest config, including tests that sit next to a save's
+  code (`saves/<save>/__tests__/` or `*.test.ts`). It knows about Node and Vitest's globals.
+- `tsconfig.saves.json`: the saves in `saves/` and the game's API in `types/farmer/`, which saves import as `'farmer'`.
+  It has no Node or browser types, so a save that uses `process` or `console` doesn't type-check. Test files are left out
+  of it, and the build and the farm lint rules skip them.
+
+Both extend `tsconfig.base.json`, which has the options they share.

@@ -54,14 +54,11 @@ export class TranspileError extends Error {
   }
 }
 
-type Kind = 'dict' | 'list' | 'set';
 type ExportKind = 'function' | 'variable';
 
 interface Declaration {
   kind: ExportKind;
   exported: boolean;
-  valueKind?: Kind;
-  returnKind?: Kind;
 }
 
 interface ModuleInfo {
@@ -70,8 +67,8 @@ interface ModuleInfo {
 
 type Binding =
   | { type: 'local'; name: string }
-  | { type: 'function'; name: string; returnKind?: Kind }
-  | { type: 'variable'; name: string; valueKind?: Kind }
+  | { type: 'function'; name: string }
+  | { type: 'variable'; name: string }
   | { type: 'farmerFunction'; name: string }
   | { type: 'farmerEnum'; name: string }
   | { type: 'farmerNamespace' }
@@ -79,18 +76,11 @@ type Binding =
   | { type: 'moduleMember'; module: string; name: string; decl: Declaration };
 
 interface Ctx {
-  locals: Map<string, Kind | undefined>;
+  locals: Set<string>;
   globals: Set<string>;
   parent: Ctx | null;
   isModule: boolean;
 }
-
-const KIND_BY_CLASS: Record<string, Kind> = {
-  Set: 'set',
-  ReadonlySet: 'set',
-  Array: 'list',
-  ReadonlyArray: 'list',
-};
 
 const TYPE_ONLY_STATEMENTS = new Set([
   'TSInterfaceDeclaration',
@@ -175,61 +165,12 @@ function someNode(
   return Object.values(current).some(child => someNode(child, visit, skip));
 }
 
-function kindFromType(annotation: Node | null | undefined): Kind | undefined {
-  if (!annotation) {
-    return undefined;
-  }
-  const type = annotation.type === 'TSTypeAnnotation' ? annotation.typeAnnotation : annotation;
-  if (type.type === 'TSTypeReference' && type.typeName.type === 'Identifier') {
-    const name = type.typeName.name;
-    if (name === 'Record') {
-      return 'dict';
-    }
-    return KIND_BY_CLASS[name];
-  }
-  if (type.type === 'TSArrayType') {
-    return 'list';
-  }
-  if (type.type === 'TSTypeOperator') {
-    return kindFromType(type.typeAnnotation);
-  }
-  if (type.type === 'TSTypeLiteral') {
-    return 'dict';
-  }
-  if (type.type === 'TSUnionType') {
-    for (const member of type.types) {
-      const kind = kindFromType(member);
-      if (kind) {
-        return kind;
-      }
-    }
-  }
-  return undefined;
-}
-
 function isFunctionValue(node: Node | null | undefined): boolean {
   if (!node) {
     return false;
   }
   const value = unwrap(node);
   return value.type === 'ArrowFunctionExpression' || value.type === 'FunctionExpression';
-}
-
-function simpleKind(node: Node | null | undefined): Kind | undefined {
-  if (!node) {
-    return undefined;
-  }
-  const value = unwrap(node);
-  if (value.type === 'NewExpression' && value.callee.type === 'Identifier') {
-    return KIND_BY_CLASS[value.callee.name];
-  }
-  if (value.type === 'ObjectExpression') {
-    return 'dict';
-  }
-  if (value.type === 'ArrayExpression') {
-    return 'list';
-  }
-  return undefined;
 }
 
 /**
@@ -242,30 +183,18 @@ function collectDeclarations(program: Node): Map<string, Declaration> {
     for (const declarator of declaration.declarations) {
       const names = patternNames(declarator.id);
       if (declarator.id.type === 'Identifier' && isFunctionValue(declarator.init)) {
-        decls.set(declarator.id.name, {
-          kind: 'function',
-          exported,
-          returnKind: kindFromType(unwrap(declarator.init).returnType),
-        });
+        decls.set(declarator.id.name, { kind: 'function', exported });
         continue;
       }
-      const valueKind =
-        declarator.id.type === 'Identifier'
-          ? (kindFromType(declarator.id.typeAnnotation) ?? simpleKind(declarator.init))
-          : undefined;
       for (const name of names) {
-        decls.set(name, { kind: 'variable', exported, valueKind });
+        decls.set(name, { kind: 'variable', exported });
       }
     }
   };
 
   const addDeclaration = (statement: Node, exported: boolean) => {
     if (statement.type === 'FunctionDeclaration') {
-      decls.set(statement.id.name, {
-        kind: 'function',
-        exported,
-        returnKind: kindFromType(statement.returnType),
-      });
+      decls.set(statement.id.name, { kind: 'function', exported });
     } else if (statement.type === 'VariableDeclaration') {
       addVariable(statement, exported);
     }
@@ -366,8 +295,8 @@ class FileTranspiler {
       this.bindings.set(
         name,
         decl.kind === 'function'
-          ? { type: 'function', name: pyFunctionName(name), returnKind: decl.returnKind }
-          : { type: 'variable', name: pyIdent(name), valueKind: decl.valueKind },
+          ? { type: 'function', name: pyFunctionName(name) }
+          : { type: 'variable', name: pyIdent(name) },
       );
     }
     for (const statement of this.program.body as Node[]) {
@@ -376,7 +305,7 @@ class FileTranspiler {
       }
     }
 
-    const ctx: Ctx = { locals: new Map(), globals: new Set(), parent: null, isModule: true };
+    const ctx: Ctx = { locals: new Set(), globals: new Set(), parent: null, isModule: true };
     const statements = this.program.body as Node[];
     for (const statement of statements) {
       const body = statement.type === 'ExportNamedDeclaration' ? statement.declaration : statement;
@@ -517,9 +446,7 @@ class FileTranspiler {
           );
         }
         scopes.at(-1)!.add(name);
-        if (!ctx.locals.has(name)) {
-          ctx.locals.set(name, undefined);
-        }
+        ctx.locals.add(name);
       }
     };
     const inScope = (fn: () => void) => {
@@ -632,65 +559,6 @@ class FileTranspiler {
   }
 
   // ---------------------------------------------------------------------------
-  // Kinds (list / set / dict)
-  // ---------------------------------------------------------------------------
-
-  private inferKind(node: Node | null | undefined, ctx: Ctx): Kind | undefined {
-    if (!node) {
-      return undefined;
-    }
-    const value = unwrap(node);
-    const simple = simpleKind(value);
-    if (simple) {
-      return simple;
-    }
-    if (value.type === 'TSAsExpression') {
-      return kindFromType(value.typeAnnotation);
-    }
-    switch (value.type) {
-      case 'ChainExpression':
-        return this.inferKind(value.expression, ctx);
-      case 'Identifier': {
-        for (let current: Ctx | null = ctx; current; current = current.parent) {
-          if (current.locals.has(value.name)) {
-            return current.locals.get(value.name);
-          }
-        }
-        const binding = this.bindings.get(value.name);
-        return binding?.type === 'variable' ? binding.valueKind : undefined;
-      }
-      case 'MemberExpression': {
-        const binding = this.resolveStatic(value, ctx);
-        if (binding?.type === 'moduleMember') {
-          return binding.decl.valueKind;
-        }
-        return undefined;
-      }
-      case 'CallExpression': {
-        const callee = unwrap(value.callee);
-        const binding = this.resolveStatic(callee, ctx);
-        if (binding?.type === 'function') {
-          return binding.returnKind;
-        }
-        if (binding?.type === 'moduleMember') {
-          return binding.decl.returnKind;
-        }
-        if (
-          callee.type === 'MemberExpression' &&
-          !callee.computed &&
-          this.isGlobalObject(callee.object, ctx) &&
-          callee.property.name === 'keys'
-        ) {
-          return 'list';
-        }
-        return undefined;
-      }
-      default:
-        return undefined;
-    }
-  }
-
-  // ---------------------------------------------------------------------------
   // Functions
   // ---------------------------------------------------------------------------
 
@@ -698,7 +566,7 @@ class FileTranspiler {
     if (fn.async || fn.generator) {
       this.fail(fn, 'Async and generator functions are not supported');
     }
-    const ctx: Ctx = { locals: new Map(), globals: new Set(), parent, isModule: false };
+    const ctx: Ctx = { locals: new Set(), globals: new Set(), parent, isModule: false };
     const params: py.Parameter[] = [];
     const prologue: { name: string; node: Node }[] = [];
     const paramNames = new Set<string>();
@@ -716,7 +584,7 @@ class FileTranspiler {
         if (param.argument.type !== 'Identifier') {
           this.fail(param, 'Destructured parameters are not supported');
         }
-        ctx.locals.set(param.argument.name, 'list');
+        ctx.locals.add(param.argument.name);
         paramNames.add(param.argument.name);
         rest = pyIdent(param.argument.name);
         continue;
@@ -725,7 +593,7 @@ class FileTranspiler {
         this.fail(param, 'Destructured parameters are not supported');
       }
       const paramName = pyIdent(target.name);
-      ctx.locals.set(target.name, kindFromType(target.typeAnnotation));
+      ctx.locals.add(target.name);
       paramNames.add(target.name);
       if (fallback) {
         sawDefault = true;
@@ -1092,7 +960,6 @@ class FileTranspiler {
     if (step !== 1) {
       args.push(step < 0 ? py.negate(py.constant(-step)) : py.constant(step));
     }
-    ctx.locals.set(name, undefined);
     return { target: py.name(pyIdent(name), true), iter: py.call(py.name('range'), args) };
   }
 
@@ -1256,7 +1123,6 @@ class FileTranspiler {
         this.fail(declarator, 'Function values can only be declared at the top level');
       }
       if (id.type === 'Identifier') {
-        const kind = kindFromType(id.typeAnnotation) ?? this.inferKind(declarator.init, ctx);
         const init = declarator.init ? unwrap(declarator.init) : null;
         const target = this.emitTarget(id, ctx, false);
         if (init?.type === 'ConditionalExpression') {
@@ -1265,9 +1131,6 @@ class FileTranspiler {
           );
         } else {
           lines.push(py.assign(target, init ? this.emitExpr(init, ctx) : py.none()));
-        }
-        if (ctx.locals.has(id.name)) {
-          ctx.locals.set(id.name, kind);
         }
       } else if (id.type === 'ArrayPattern') {
         if (!declarator.init) {
