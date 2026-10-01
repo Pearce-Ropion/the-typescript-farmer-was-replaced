@@ -16,7 +16,8 @@ saves/
   `'farmer'`, and nothing else.
 - Build with `yarn build` (every save), `yarn build Save0` (one save) or `yarn build:watch` (rebuild on every change).
   The Python is written to `builds/<save>/<file>.py`, or wherever `--out` points.
-- Everything in this directory except this file is ignored by git. To version control your saves, remove the
-  `saves/*` line from `.gitignore`.
+- Your saves belong to your own fork of the repository. Everything in this directory except this file is ignored by
+  git, so to version control your saves in your fork, remove the `saves/*` line from `.gitignore` and delete the "Saves
+  directory" step of the CI workflow (`.github/workflows/ci.yml`), which fails when a save is committed.
 
 See the [main README](../README.md) for the options of the build and for what TypeScript the game can run.

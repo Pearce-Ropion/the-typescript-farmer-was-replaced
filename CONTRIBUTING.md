@@ -185,8 +185,9 @@ the tools they run replaced where that helps.
 1. **Start with an issue or a clear description.** For a bug, include the TypeScript that fails, the Python you expected
    (or the error you got), and what the game does with it. For a new feature,
    say what you want to write in a save and what Python it should become.
-2. **Make a branch** and change as little as the problem needs. Match the code
-   around you; the formatter takes care of layout.
+2. **Fork the repository and make a branch** in your fork, and change as little as the problem needs. Match the code
+   around you; the formatter takes care of layout. The project is meant to be forked and used as it is, with your saves
+   in your fork, so keep your own saves out of the pull request (`saves/` is git-ignored unless you removed that line).
 3. **Add tests.** Every change comes with tests, and coverage has to stay at 100%.
    - A new construct: translate it in `transpile.ts`, add examples to `__tests__/syntax.test.ts` or
      `edge-cases.test.ts`, and add its error cases to the table of unsupported syntax.
@@ -205,7 +206,9 @@ the tools they run replaced where that helps.
    `yarn format` rewrites files, so commit the result.
 
    The same checks run on GitHub (`.github/workflows/ci.yml`) for every pull request and every push to `main`, and a
-   pull request needs them to pass.
+   pull request needs them to pass. CI also fails if `saves/` contains anything but its `README.md`, so don't
+   commit your own saves to a pull request. (A fork that commits its own saves should delete that "Saves directory" step
+   of the workflow.)
 
 6. **Open a pull request** that says what changed and why, and links the issue. Keep commits short and in the
    imperative mood, as in the history (`Add flat modules lint rule`, `Use commander for build script`).

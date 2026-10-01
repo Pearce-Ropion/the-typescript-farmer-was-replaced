@@ -32,9 +32,14 @@ while True:
 
 ## Getting started
 
+This project is meant to be **forked**. Your code lives in `saves/`, next to the tool that builds it, so each person
+uses their own copy of the repository: fork it on GitHub, then clone your fork.
+
 You need [Node.js](https://nodejs.org) 24 and [Yarn](https://yarnpkg.com).
 
 ```sh
+git clone git@github.com:<you>/the-typescript-farmer-was-replaced.git
+cd the-typescript-farmer-was-replaced
 yarn install
 ```
 
@@ -189,7 +194,19 @@ are the `typescript-farmer/*` rules and a few of oxlint's own; each message says
 
 ### Keeping your saves in git
 
-`saves/*` is in `.gitignore`, so your saves aren't committed by default. Remove that line if you want to version controlthem yourself.
+Your saves are in your own fork, and `saves/*` is in `.gitignore`, so they aren't committed by default. Remove that
+line if you want to version control them in your fork.
+
+The CI workflow fails when anything but `saves/README.md` is committed in `saves/`. **If you commit your saves, delete
+the "Saves directory" step in `.github/workflows/ci.yml` in your fork** (or disable the check there), or its runs will
+fail.
+
+To get improvements from this repository into your fork, add it as a remote and merge it:
+
+```sh
+git remote add upstream https://github.com/Pearce-Ropion/the-typescript-farmer-was-replaced.git
+git pull upstream main
+```
 
 ## Contributing
 
