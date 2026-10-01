@@ -26,6 +26,21 @@ jobs:
 
       - run: yarn install --immutable
 
+      # Saves belong in a fork and not in this repository, so nothing but the README may be committed in saves/.
+      # If you fork this repository to commit your own saves, delete this step (or disable it) in your fork.
+      - name: Saves directory
+        run: |
+          if ! git ls-files --error-unmatch saves/README.md > /dev/null 2>&1; then
+            echo "::error::saves/README.md is missing. It keeps the saves directory in a fresh checkout."
+            exit 1
+          fi
+          extra=$(git ls-files saves | grep -vx 'saves/README.md' || true)
+          if [ -n "$extra" ]; then
+            echo "::error::saves/ must only contain README.md. Keep your own saves in your fork."
+            echo "$extra"
+            exit 1
+          fi
+
       - name: Types
         run: yarn types
 
