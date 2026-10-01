@@ -99,9 +99,10 @@ exist, and converts each name to the game's `snake_case` name. When you add or c
 
 ### Lint rules
 
-Code in `saves/` is linted with a few rules of oxlint's own and with custom
-rules in `scripts/oxlint`, all configured in `.oxlintrc.json` (`overrides` for
-`saves/**/*.ts`, which leaves out test files):
+The whole project is linted with oxlint's `correctness` rules, which are errors, so a pattern that is likely to be a bug
+fails `yarn lint`. Code in `saves/` is also linted with a few more rules of oxlint's own and with custom rules in
+`scripts/oxlint`. All of it is configured in `.oxlintrc.json`: the `categories` and the `overrides` for
+`saves/**/*.ts`, which leaves out test files.
 
 | Rule                                                                                      | Reports                                                                    |
 | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
