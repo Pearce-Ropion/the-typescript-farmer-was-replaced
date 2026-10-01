@@ -20,7 +20,8 @@
           }
         ],
         "typescript/no-non-null-assertion": "error",
-        "no-ternary": "error"
+        "no-ternary": "error",
+        "farm/flat-modules": "error"
       }
     }
   ]

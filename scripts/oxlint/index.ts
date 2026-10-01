@@ -1,3 +1,4 @@
+import flatModules from './rules/flat-modules.ts';
 import noClasses from './rules/no-classes.ts';
 import noLambdas from './rules/no-lambdas.ts';
 import noNumberConversion from './rules/no-number-conversion.ts';
@@ -9,6 +10,7 @@ import noUnsupportedCollectionMember from './rules/no-unsupported-collection-mem
 export default {
   meta: { name: 'farm' },
   rules: {
+    'flat-modules': flatModules,
     'no-classes': noClasses,
     'no-lambdas': noLambdas,
     'no-number-conversion': noNumberConversion,
