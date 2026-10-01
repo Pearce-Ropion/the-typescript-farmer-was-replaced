@@ -148,14 +148,14 @@ include the extension.
 
 ## Scripts
 
-| Command                       | What it does                                                              |
-| ----------------------------- | ------------------------------------------------------------------------- |
-| `yarn build` / `yarn dev`     | build once / rebuild on changes (see the README for the options)          |
-| `yarn types`                  | type-check everything                                                     |
-| `yarn lint` / `yarn lint:fix` | lint (type-aware) the project and the saves; `lint:fix` fixes what it can |
-| `yarn format`                 | format with oxfmt                                                         |
-| `yarn test`                   | run the tests in watch mode                                               |
-| `yarn coverage`               | run the tests once with coverage                                          |
+| Command                           | What it does                                                                                              |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `yarn build` / `yarn build:watch` | build once / rebuild on changes (see the README for the options); `yarn dev` is the same as `build:watch` |
+| `yarn types`                      | type-check everything                                                                                     |
+| `yarn lint` / `yarn lint:fix`     | lint (type-aware) the project and the saves; `lint:fix` fixes what it can                                 |
+| `yarn format`                     | format with oxfmt                                                                                         |
+| `yarn test`                       | run the tests in watch mode                                                                               |
+| `yarn coverage`                   | run the tests once with coverage                                                                          |
 
 ## Tests and coverage
 

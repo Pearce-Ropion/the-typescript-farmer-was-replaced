@@ -78,7 +78,7 @@ The command can be started in any of these ways, which are all the same program:
 ```sh
 yarn the-typescript-farmer --watch   # the binary of the package
 yarn build                           # yarn build [saves...]
-yarn dev                             # the same as yarn build --watch
+yarn build:watch                     # the same as yarn build --watch (also available as yarn dev)
 ./scripts/build.ts --watch           # the script itself
 ```
 
@@ -86,7 +86,7 @@ Examples:
 
 ```sh
 yarn build save-1 save-2             # only these two saves
-yarn dev save-1                      # watch one save
+yarn build:watch save-1               # watch one save
 yarn build --saves ~/farm --out ~/farm-python
 ```
 

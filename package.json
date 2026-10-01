@@ -13,15 +13,17 @@
     "test": "vitest",
     "types": "tsc -b"
   },
+  "dependencies": {
+    "commander": "^15.0.0",
+    "oxc-parser": "^0.152.0",
+    "py-ast": "^1.16.0"
+  },
   "devDependencies": {
     "@types/node": "^26.6.3",
     "@vitest/coverage-v8": "5.0.2",
-    "commander": "^15.0.0",
-    "oxc-parser": "^0.152.0",
     "oxfmt": "^0.71.0",
     "oxlint": "^1.86.0",
     "oxlint-tsgolint": "^7.0.2003",
-    "py-ast": "^1.16.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.1",
     "vitest": "^5.0.2"
