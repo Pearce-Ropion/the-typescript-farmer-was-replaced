@@ -1,21 +1,27 @@
 import { existsSync, watch } from 'node:fs';
 import { dirname, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseArgs } from 'node:util';
+
+import { Command } from 'commander';
 
 import { buildSaves, listSaves, pruneSaves } from './transpiler/project.ts';
 import type { SavesOptions } from './transpiler/project.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-const { values, positionals } = parseArgs({
-  allowPositionals: true,
-  options: {
-    watch: { type: 'boolean', short: 'w', default: false },
-    saves: { type: 'string', default: 'saves' },
-    out: { type: 'string', default: 'builds' },
-  },
-});
+const program = new Command()
+  .name('build')
+  .description(
+    "Transpiles the TypeScript of each save in the saves directory to the game's Python.",
+  )
+  .argument('[saves...]', 'the saves to build (every save by default)')
+  .option('-w, --watch', 'rebuild whenever a file changes', false)
+  .option('--saves <dir>', 'the directory that contains the saves', 'saves')
+  .option('--out <dir>', 'the directory the Python is written to', 'builds')
+  .parse();
+
+const positionals: string[] = program.args;
+const values = program.opts<{ watch: boolean; saves: string; out: string }>();
 
 const options: SavesOptions = {
   savesDir: resolve(root, values.saves),
@@ -34,14 +40,12 @@ function selectedSaves(): string[] {
 
 const unknown = positionals.filter(save => !existsSync(resolve(options.savesDir, save)));
 if (unknown.length) {
-  console.error(
-    `error no such save: ${unknown.join(', ')} (looked in ${display(options.savesDir)})`,
+  program.error(
+    `error: no such save: ${unknown.join(', ')} (looked in ${display(options.savesDir)})`,
   );
-  process.exit(1);
 }
 if (!existsSync(options.savesDir)) {
-  console.error(`error ${display(options.savesDir)} does not exist`);
-  process.exit(1);
+  program.error(`error: ${display(options.savesDir)} does not exist`);
 }
 
 function build(saves: string[]): boolean {
