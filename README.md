@@ -1,9 +1,10 @@
 # the-typescript-farmer
 
-In _The Farmer Was Replaced_ you program a drone in a language that looks like
-Python. **the-typescript-farmer** lets you write that code in TypeScript
-instead, with types, autocomplete and linting for the game's API, and turns it
-intothe Python the game runs.
+In [_The Farmer Was Replaced_](https://www.metaroot.ch/press-kit/the-farmer-was-replaced)
+you program a drone in a language that looks like Python.
+**the-typescript-farmer** lets you write that code in TypeScript instead, with
+types, autocomplete and linting for the game's API, and turns it into the Python
+the game runs.
 
 ```ts
 // saves/save-1/main.ts
