@@ -64,7 +64,7 @@ is better than Python that behaves differently.
 ## Project layout
 
 ```
-saves/               your saves, one directory each (git-ignored)
+saves/               your saves, one directory each (git-ignored, except its README.md)
 builds/              the generated Python, one directory per save (git-ignored)
 types/farmer/        the TypeScript declarations of the game's API, imported as 'farmer'
 scripts/
