@@ -7,7 +7,7 @@
   "jsPlugins": ["./scripts/oxlint/index.ts"],
   "overrides": [
     {
-      "files": ["src/**/*.ts"],
+      "files": ["saves/**/*.ts"],
       "rules": {
         "farm/no-unsupported-collection-member": "error",
         "farm/no-classes": "error",

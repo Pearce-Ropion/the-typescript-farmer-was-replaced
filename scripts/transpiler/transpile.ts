@@ -23,9 +23,21 @@ export interface OutputFile {
   code: string;
 }
 
+/**
+ * A file that wasn't transpiled because a module it imports couldn't be parsed. The syntax error in that
+ * module is the real problem, so this isn't reported as an error of its own.
+ */
+export interface SkippedFile {
+  name: string;
+  path: string;
+  /** The module that has the syntax error. */
+  because: string;
+}
+
 export interface TranspileResult {
   outputs: OutputFile[];
   errors: TranspileError[];
+  skipped: SkippedFile[];
 }
 
 export class TranspileError extends Error {
@@ -33,8 +45,8 @@ export class TranspileError extends Error {
   line: number;
   column: number;
 
-  constructor(message: string, file: string, line: number, column: number) {
-    super(`${file}:${line}:${column}: ${message}`);
+  constructor(message: string, file: string, line: number, column: number, cause?: unknown) {
+    super(`${file}:${line}:${column}: ${message}`, { cause });
     this.name = 'TranspileError';
     this.file = file;
     this.line = line;
@@ -1836,7 +1848,9 @@ class FileTranspiler {
 
 export function transpileProject(files: SourceFile[], farmer: FarmerInfo): TranspileResult {
   const errors: TranspileError[] = [];
+  const skipped: SkippedFile[] = [];
   const parsed = new Map<string, { file: SourceFile; program: Node }>();
+  const unparsable = new Set<string>();
 
   for (const file of files) {
     const result = parseSync(file.path, file.source, {
@@ -1848,6 +1862,7 @@ export function transpileProject(files: SourceFile[], farmer: FarmerInfo): Trans
       const [error] = result.errors;
       const { line, column } = locate(file.source, error.labels[0]?.start ?? 0);
       errors.push(new TranspileError(error.message, file.path, line, column));
+      unparsable.add(file.name);
       continue;
     }
     parsed.set(file.name, { file, program: result.program as unknown as Node });
@@ -1860,6 +1875,11 @@ export function transpileProject(files: SourceFile[], farmer: FarmerInfo): Trans
 
   const outputs: OutputFile[] = [];
   for (const [name, { file, program }] of parsed) {
+    const broken = importedModules(program).find(module => unparsable.has(module));
+    if (broken) {
+      skipped.push({ name, path: file.path, because: broken });
+      continue;
+    }
     try {
       outputs.push({
         name,
@@ -1869,9 +1889,21 @@ export function transpileProject(files: SourceFile[], farmer: FarmerInfo): Trans
       if (error instanceof TranspileError) {
         errors.push(error);
       } else {
-        throw error;
+        // A bug in the transpiler. Report it against the file so the other files still build.
+        const message = error instanceof Error ? error.message : String(error);
+        errors.push(
+          new TranspileError(`Internal transpiler error: ${message}`, file.path, 1, 1, error),
+        );
       }
     }
   }
-  return { outputs, errors };
+  return { outputs, errors, skipped };
+}
+
+function importedModules(program: Node): string[] {
+  return (program.body as Node[])
+    .filter(statement => statement.type === 'ImportDeclaration')
+    .map(statement => statement.source.value as string)
+    .filter(source => source.startsWith('./'))
+    .map(source => source.slice(2).replace(/\.ts$/, ''));
 }

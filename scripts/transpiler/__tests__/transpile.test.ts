@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { ALLOWED_MEMBERS } from '../collections.ts';
 import { farmerFunctionName, loadFarmerInfo } from '../farmer.ts';
 import { pyFunctionName, toSnakeCase } from '../naming.ts';
-import { buildProject } from '../project.ts';
+import { buildProject, buildSaves, listSaves, pruneSaves } from '../project.ts';
 import * as pyAst from '../py.ts';
 import { transpileProject } from '../transpile.ts';
 
@@ -560,11 +560,11 @@ describe('errors', () => {
 });
 
 describe('project', () => {
-  it('builds src/farm into valid python', () => {
+  it('builds saves/save-1 into valid python', () => {
     const outDir = mkdtempSync(join(tmpdir(), 'farm-build-'));
     try {
       const result = buildProject({
-        srcDir: join(root, 'src/farm'),
+        srcDir: join(root, 'saves/save-1'),
         outDir,
         farmerDir: join(root, 'types/farmer'),
       });
@@ -586,5 +586,152 @@ describe('project', () => {
     } finally {
       rmSync(outDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('build failures', () => {
+  const files = (sources: Record<string, string>) =>
+    Object.entries(sources).map(([name, source]) => ({ name, path: `${name}.ts`, source }));
+
+  it('reports only the syntax error, not the files that import the broken module', () => {
+    const { errors, skipped, outputs } = transpileProject(
+      files({
+        broken: 'export function oops( {',
+        user: "import { oops } from './broken'; export function user() { oops(); }",
+        other: 'export const fine = 1;',
+      }),
+      farmer,
+    );
+    expect(errors.map(error => error.file)).toEqual(['broken.ts']);
+    expect(skipped).toEqual([{ name: 'user', path: 'user.ts', because: 'broken' }]);
+    expect(outputs.map(output => output.name)).toEqual(['other']);
+  });
+
+  it('keeps building the other files after a transpile error', () => {
+    const { errors, outputs } = transpileProject(
+      files({ bad: 'class A {}', good: 'export const x = 1;' }),
+      farmer,
+    );
+    expect(errors).toHaveLength(1);
+    expect(outputs.map(output => output.name)).toEqual(['good']);
+  });
+
+  it('reports a bug in the transpiler against the file instead of throwing', () => {
+    const brokenFarmer = { functions: undefined, enums: undefined } as never;
+    const { errors, outputs } = transpileProject(
+      files({
+        bug: "import { move } from 'farmer'; move();",
+        good: 'export const x = 1;',
+      }),
+      brokenFarmer,
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toMatch(/bug\.ts:1:1: Internal transpiler error/);
+    expect(errors[0].cause).toBeInstanceOf(Error);
+    expect(outputs.map(output => output.name)).toEqual(['good']);
+  });
+
+  it('keeps the previous python file and reports it as out of date', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'farm-stale-'));
+    const srcDir = join(dir, 'src');
+    const outDir = join(dir, 'build');
+    mkdirSync(srcDir);
+    const options = { srcDir, outDir, farmerDir: join(root, 'types/farmer') };
+    try {
+      writeFileSync(join(srcDir, 'a.ts'), 'export const a = 1;\n');
+      writeFileSync(join(srcDir, 'b.ts'), 'export const b = 2;\n');
+      expect(buildProject(options)).toMatchObject({ errors: [], stale: [], skipped: [] });
+      const before = readFileSync(join(outDir, 'a.py'), 'utf8');
+
+      writeFileSync(join(srcDir, 'a.ts'), 'class Oops {}\n');
+      writeFileSync(join(srcDir, 'b.ts'), 'export const b = 3;\n');
+      const result = buildProject(options);
+      expect(result.errors).toHaveLength(1);
+      expect(result.stale).toEqual([join(outDir, 'a.py')]);
+      expect(readFileSync(join(outDir, 'a.py'), 'utf8')).toBe(before);
+      expect(readFileSync(join(outDir, 'b.py'), 'utf8')).toContain('b = 3');
+
+      writeFileSync(join(srcDir, 'a.ts'), 'export const a = 4;\n');
+      expect(buildProject(options).stale).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('saves', () => {
+  const withSaves = (
+    run: (options: { savesDir: string; outDir: string; farmerDir: string }) => void,
+  ) => {
+    const dir = mkdtempSync(join(tmpdir(), 'farm-saves-'));
+    try {
+      const savesDir = join(dir, 'saves');
+      mkdirSync(join(savesDir, 'one'), { recursive: true });
+      mkdirSync(join(savesDir, 'two'), { recursive: true });
+      mkdirSync(join(savesDir, '.hidden'), { recursive: true });
+      writeFileSync(join(savesDir, 'notes.txt'), 'not a save');
+      run({ savesDir, outDir: join(dir, 'builds'), farmerDir: join(root, 'types/farmer') });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  it('lists the directories of the saves directory as saves', () => {
+    withSaves(({ savesDir }) => {
+      expect(listSaves(savesDir)).toEqual(['one', 'two']);
+      expect(listSaves(join(savesDir, 'missing'))).toEqual([]);
+    });
+  });
+
+  it('builds every save into its own directory', () => {
+    withSaves(options => {
+      writeFileSync(
+        join(options.savesDir, 'one/main.ts'),
+        "import { a } from './util';\nexport const x = a;\n",
+      );
+      writeFileSync(join(options.savesDir, 'one/util.ts'), 'export const a = 1;\n');
+      writeFileSync(join(options.savesDir, 'two/main.ts'), 'export const y = 2;\n');
+
+      const results = buildSaves(options);
+      expect(results.map(({ save }) => save)).toEqual(['one', 'two']);
+      expect(results.every(({ result }) => result.errors.length === 0)).toBe(true);
+      expect(readdirSync(join(options.outDir, 'one')).toSorted()).toEqual(['main.py', 'util.py']);
+      expect(readdirSync(join(options.outDir, 'two'))).toEqual(['main.py']);
+    });
+  });
+
+  it('keeps the saves separate, so one save cannot import another', () => {
+    withSaves(options => {
+      writeFileSync(join(options.savesDir, 'one/util.ts'), 'export const a = 1;\n');
+      writeFileSync(
+        join(options.savesDir, 'two/main.ts'),
+        "import { a } from './util';\nexport const x = a;\n",
+      );
+
+      const [, two] = buildSaves(options);
+      expect(two.result.errors[0]?.message).toMatch(/Cannot find the module '\.\/util'/);
+    });
+  });
+
+  it('builds only the saves it is asked to', () => {
+    withSaves(options => {
+      writeFileSync(join(options.savesDir, 'one/main.ts'), 'export const x = 1;\n');
+      writeFileSync(join(options.savesDir, 'two/main.ts'), 'export const y = 2;\n');
+
+      buildSaves(options, ['two']);
+      expect(readdirSync(options.outDir)).toEqual(['two']);
+    });
+  });
+
+  it('removes the output of a save that was deleted', () => {
+    withSaves(options => {
+      writeFileSync(join(options.savesDir, 'one/main.ts'), 'export const x = 1;\n');
+      writeFileSync(join(options.savesDir, 'two/main.ts'), 'export const y = 2;\n');
+      buildSaves(options);
+
+      rmSync(join(options.savesDir, 'two'), { recursive: true });
+      expect(pruneSaves(options)).toEqual([join(options.outDir, 'two/main.py')]);
+      expect(readdirSync(options.outDir)).toEqual(['one']);
+    });
   });
 });

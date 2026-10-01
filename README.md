@@ -1,14 +1,17 @@
 # ts-farmer-was-replaced
 
-Write the game's code in TypeScript in `src/farm/` and build it to Python in `build/`.
+Write the game's code in TypeScript in `saves/<save>/` and build it to Python in `builds/<save>/`. Each directory in
+`saves/` is a separate save, and a save's files can only import each other.
 
 ```sh
-yarn build   # transpile once
-yarn dev     # rebuild whenever a file in src/farm/ (or the types/farmer/ declarations) is saved
+yarn build           # transpile every save once
+yarn build save-1    # transpile only the named saves
+yarn dev             # rebuild whenever a file in saves/ (or the types/farmer/ declarations) is saved
 ```
 
-Each `src/farm/<name>.ts` becomes `build/<name>.py`. The game's API is imported from `'farmer'`
-(see `types/farmer/`), and function names are converted to `snake_case`.
+Each `saves/<save>/<name>.ts` becomes `builds/<save>/<name>.py`. The game's API is imported from `'farmer'`
+(see `types/farmer/`), and function names are converted to `snake_case`. A save that is deleted has its generated
+Python removed on the next build.
 
 Only the parts of TypeScript that map onto the game's Python are supported:
 
@@ -21,6 +24,10 @@ Only the parts of TypeScript that map onto the game's Python are supported:
 
 The game has no conditional expressions, so `a ? b : c`, `??` and `?.` are written as `if` statements
 (using `_tmp_N` variables when they sit inside a larger expression).
+
+When a file fails to build, the error is printed with its file, line and column and the watcher keeps running. The other
+files are still built, files that import a file with a syntax error are skipped, and a file that fails keeps its
+previous `.py` (with a warning that it is out of date) so the game isn't left without it.
 
 Anything else stops the build with an error that points at the offending line.
 
@@ -37,6 +44,6 @@ The game has no classes or lambdas, so `farm/no-classes` and `farm/no-lambdas` r
 instead). `farm/no-number-conversion` reports `Number()`, `parseInt`, `parseFloat` and unary `+`, because the game has
 `str()` but no `int()` or `float()`; `String(value)` and `value.toString()` become `str(value)`.
 Ternaries are reported by oxlint's `no-ternary` rule (use `if`/`else`). Type assertions (`value as T`, `<T>value` and `value!`) are reported by oxlint's `typescript/consistent-type-assertions`
-and `typescript/no-non-null-assertion` rules, so values are converted with real code instead of being cast. The `farm/no-unsupported-collection-member` oxlint rule (one file per rule in `scripts/oxlint/rules/`, registered in `scripts/oxlint/index.ts` and enabled for `src/farm`)
+and `typescript/no-non-null-assertion` rules, so values are converted with real code instead of being cast. The `farm/no-unsupported-collection-member` oxlint rule (one file per rule in `scripts/oxlint/rules/`, registered in `scripts/oxlint/index.ts` and enabled for `saves/`)
 reports any other member as you type. It works from annotations and initialisers in the same file, so values whose
 type comes from another file can't be checked there. The transpiler still rejects them.
