@@ -18,5 +18,9 @@ saves/*
 # Except this explanation of the directory, so that it exists in a fresh checkout.
 !saves/README.md
 
+# What the game prints (output.txt) is copied into the logs directory of a save while a build is watching.
+# This stays ignored when you commit your saves in your fork.
+saves/*/logs/
+
 # Test coverage reports
 coverage

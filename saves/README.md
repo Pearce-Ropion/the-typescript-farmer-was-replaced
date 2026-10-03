@@ -19,5 +19,8 @@ saves/
 - Your saves belong to your own fork of the repository. Everything in this directory except this file is ignored by
   git, so to version control your saves in your fork, remove the `saves/*` line from `.gitignore` and delete the "Saves
   directory" step of the CI workflow (`.github/workflows/ci.yml`), which fails when a save is committed.
+- While `yarn build:watch` runs, the `.txt` files the game writes into the save, such as the `output.txt` of
+  `quick_print()`, are copied into the `logs` directory of the save (`logs/output.txt`), which is git-ignored, so you can read them next to
+  your code.
 
 See the [main README](../README.md) for the options of the build and for what TypeScript the game can run.

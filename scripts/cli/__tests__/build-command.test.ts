@@ -1,4 +1,14 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -283,8 +293,9 @@ describe('watching', () => {
     });
     const savesWatcher = [...watchers.entries()].find(([dir]) => dir.endsWith('/saves'))![1];
     const typesWatcher = [...watchers.entries()].find(([dir]) => dir.endsWith('/farmer'))![1];
+    const outputWatcher = [...watchers.entries()].find(([dir]) => dir.endsWith('/builds'))![1];
     built.length = 0;
-    return { result, lines, built, savesWatcher, typesWatcher, watchers };
+    return { result, lines, built, savesWatcher, typesWatcher, outputWatcher, watchers };
   };
 
   it('starts watching after the first build', async () => {
@@ -294,7 +305,7 @@ describe('watching', () => {
         const { result, lines, watchers } = setup(workspace);
         expect(result.exitCode).toBe(0);
         expect(lines.log).toContain('watching saves...');
-        expect(watchers.size).toBe(2);
+        expect(watchers.size).toBe(3);
       });
     });
   });
@@ -340,6 +351,8 @@ describe('watching', () => {
         const { built, savesWatcher } = setup(workspace);
 
         savesWatcher.listener('one/notes.md');
+        // The copies of the game's text files are in the save and must not start a build.
+        savesWatcher.listener('one/logs/output.txt');
         savesWatcher.listener('main.ts');
         savesWatcher.listener(null);
         vi.advanceTimersByTime(100);
@@ -437,6 +450,278 @@ describe('watching', () => {
           await new Promise(done => setTimeout(done, 100));
         }
         expect(lines.log).toContain('[one] wrote builds/one/main.py');
+      } finally {
+        result.stop();
+      }
+    });
+  }, 30_000);
+});
+
+describe('copying the text files of the game', () => {
+  // quick_print() makes the game write output.txt next to the code, so it ends up in the output directory.
+  const writeOutput = (workspace: Workspace, save: string, file: string, content: string) => {
+    mkdirSync(join(workspace.root, 'builds', save), { recursive: true });
+    writeFileSync(join(workspace.root, 'builds', save, file), content);
+  };
+  const readSave = (workspace: Workspace, save: string, file: string) =>
+    readFileSync(join(workspace.root, 'saves', save, 'logs', file), 'utf8');
+
+  const watching = (workspace: Workspace, args: string[] = []) => {
+    const listeners = new Map<string, (filename: string | null) => void>();
+    const closed: string[] = [];
+    const { lines, output } = capture();
+    const result = run(['--watch', ...args], {
+      root: workspace.root,
+      output,
+      dependencies: {
+        watch: (dir, listener) => {
+          const name = dir.split('/').pop()!;
+          listeners.set(name, listener);
+          return { close: () => closed.push(name) };
+        },
+      },
+    });
+    lines.log.length = 0;
+    return { result, lines, closed, output: listeners.get('builds')! };
+  };
+
+  const withTimers = async (test: () => void | Promise<void>) => {
+    vi.useFakeTimers();
+    try {
+      await test();
+    } finally {
+      vi.useRealTimers();
+    }
+  };
+
+  it('copies a text file of a save back into the save', async () => {
+    await withTimers(() =>
+      withWorkspace(workspace => {
+        workspace.write('one', 'main.ts', GOOD);
+        const { lines, output } = watching(workspace);
+
+        writeOutput(workspace, 'one', 'output.txt', 'hello\n');
+        output('one/output.txt');
+        expect(existsSync(join(workspace.root, 'saves/one/logs/output.txt'))).toBe(false);
+        vi.advanceTimersByTime(50);
+        expect(readSave(workspace, 'one', 'output.txt')).toBe('hello\n');
+        expect(lines.log).toEqual(['[one] copied output.txt to saves/one/logs/output.txt']);
+      }),
+    );
+  });
+
+  it('creates the logs directory and keeps what else is in it', async () => {
+    await withTimers(() =>
+      withWorkspace(workspace => {
+        workspace.write('one', 'main.ts', GOOD);
+        mkdirSync(join(workspace.root, 'saves/one/logs'));
+        writeFileSync(join(workspace.root, 'saves/one/logs/kept.txt'), 'kept\n');
+        workspace.write('two', 'main.ts', GOOD);
+        const { output } = watching(workspace);
+
+        writeOutput(workspace, 'one', 'output.txt', 'one\n');
+        writeOutput(workspace, 'two', 'output.txt', 'two\n');
+        output('one/output.txt');
+        output('two/output.txt');
+        vi.advanceTimersByTime(50);
+        expect(readSave(workspace, 'one', 'kept.txt')).toBe('kept\n');
+        expect(readSave(workspace, 'one', 'output.txt')).toBe('one\n');
+        // The logs directory of a save is made when something is copied into it.
+        expect(readSave(workspace, 'two', 'output.txt')).toBe('two\n');
+      }),
+    );
+  });
+
+  it('copies the new content when the file changes', async () => {
+    await withTimers(() =>
+      withWorkspace(workspace => {
+        workspace.write('one', 'main.ts', GOOD);
+        const { lines, output } = watching(workspace);
+
+        for (const content of ['first\n', 'second\n']) {
+          writeOutput(workspace, 'one', 'output.txt', content);
+          output('one/output.txt');
+          vi.advanceTimersByTime(50);
+          expect(readSave(workspace, 'one', 'output.txt')).toBe(content);
+        }
+        expect(lines.log).toHaveLength(2);
+      }),
+    );
+  });
+
+  it('leaves a copy alone when the content is the same', async () => {
+    await withTimers(() =>
+      withWorkspace(workspace => {
+        workspace.write('one', 'main.ts', GOOD);
+        const { lines, output } = watching(workspace);
+        writeOutput(workspace, 'one', 'output.txt', 'same\n');
+        output('one/output.txt');
+        vi.advanceTimersByTime(50);
+        const copy = join(workspace.root, 'saves/one/logs/output.txt');
+        // An old modification time shows that the file is not written again.
+        utimesSync(copy, 1, 1);
+        lines.log.length = 0;
+
+        output('one/output.txt');
+        vi.advanceTimersByTime(50);
+        expect(lines.log).toEqual([]);
+        expect(statSync(copy).mtimeMs).toBe(1000);
+      }),
+    );
+  });
+
+  it('copies several files in one go and a burst of changes only once', async () => {
+    await withTimers(() =>
+      withWorkspace(workspace => {
+        workspace.write('one', 'main.ts', GOOD);
+        workspace.write('two', 'main.ts', GOOD);
+        const { lines, output } = watching(workspace);
+
+        writeOutput(workspace, 'one', 'output.txt', 'a\n');
+        writeOutput(workspace, 'one', 'notes.txt', 'b\n');
+        writeOutput(workspace, 'two', 'output.txt', 'c\n');
+        output('one/output.txt');
+        output('one/output.txt');
+        vi.advanceTimersByTime(20);
+        output('one/notes.txt');
+        output('two/output.txt');
+        vi.advanceTimersByTime(49);
+        expect(lines.log).toEqual([]);
+        vi.advanceTimersByTime(1);
+        expect(lines.log.toSorted()).toEqual([
+          '[one] copied notes.txt to saves/one/logs/notes.txt',
+          '[one] copied output.txt to saves/one/logs/output.txt',
+          '[two] copied output.txt to saves/two/logs/output.txt',
+        ]);
+      }),
+    );
+  });
+
+  it('ignores files that are not text files directly in a save', async () => {
+    await withTimers(() =>
+      withWorkspace(workspace => {
+        workspace.write('one', 'main.ts', GOOD);
+        const { lines, output } = watching(workspace);
+
+        writeOutput(workspace, 'one', 'main.py', 'x = 1\n');
+        writeOutput(workspace, 'one', 'data.json', '{}');
+        mkdirSync(join(workspace.root, 'builds/one/inner'));
+        writeFileSync(join(workspace.root, 'builds/one/inner/deep.txt'), 'deep\n');
+        writeFileSync(join(workspace.root, 'builds/loose.txt'), 'loose\n');
+        output('one/main.py');
+        output('one/data.json');
+        output('one/inner/deep.txt');
+        output('loose.txt');
+        output(null);
+        vi.advanceTimersByTime(100);
+        expect(lines.log).toEqual([]);
+        expect(existsSync(join(workspace.root, 'saves/one/logs/deep.txt'))).toBe(false);
+        expect(existsSync(join(workspace.root, 'saves/one/logs/loose.txt'))).toBe(false);
+        expect(existsSync(join(workspace.root, 'saves/logs'))).toBe(false);
+      }),
+    );
+  });
+
+  it('only copies for the saves it was asked to watch', async () => {
+    await withTimers(() =>
+      withWorkspace(workspace => {
+        workspace.write('one', 'main.ts', GOOD);
+        workspace.write('two', 'main.ts', GOOD);
+        const { lines, output } = watching(workspace, ['one']);
+
+        writeOutput(workspace, 'two', 'output.txt', 'ignored\n');
+        writeOutput(workspace, 'one', 'output.txt', 'copied\n');
+        output('two/output.txt');
+        output('one/output.txt');
+        vi.advanceTimersByTime(100);
+        expect(lines.log).toEqual(['[one] copied output.txt to saves/one/logs/output.txt']);
+        expect(existsSync(join(workspace.root, 'saves/two/logs/output.txt'))).toBe(false);
+      }),
+    );
+  });
+
+  it('skips a file that is gone and a save that is gone', async () => {
+    await withTimers(() =>
+      withWorkspace(workspace => {
+        workspace.write('one', 'main.ts', GOOD);
+        workspace.write('two', 'main.ts', GOOD);
+        const { lines, output } = watching(workspace);
+
+        // No file was written for one, and the save of two is removed.
+        writeOutput(workspace, 'two', 'output.txt', 'orphan\n');
+        rmSync(join(workspace.root, 'saves/two'), { recursive: true });
+        output('one/output.txt');
+        output('two/output.txt');
+        vi.advanceTimersByTime(100);
+        expect(lines.log).toEqual([]);
+        expect(lines.error).toEqual([]);
+      }),
+    );
+  });
+
+  it('reports a file it cannot copy and keeps going', async () => {
+    await withTimers(() =>
+      withWorkspace(workspace => {
+        workspace.write('one', 'main.ts', GOOD);
+        const { lines, output } = watching(workspace);
+
+        writeOutput(workspace, 'one', 'output.txt', 'text\n');
+        // A directory in the way makes writing the copy fail.
+        mkdirSync(join(workspace.root, 'saves/one/logs/output.txt'), { recursive: true });
+        output('one/output.txt');
+        vi.advanceTimersByTime(50);
+        expect(lines.error).toHaveLength(1);
+        expect(lines.error[0]).toMatch(/^\[one\] could not copy output\.txt: /);
+      }),
+    );
+  });
+
+  it('stops watching the output and cancels a pending copy', async () => {
+    await withTimers(() =>
+      withWorkspace(workspace => {
+        workspace.write('one', 'main.ts', GOOD);
+        const { result, lines, closed, output } = watching(workspace);
+
+        writeOutput(workspace, 'one', 'output.txt', 'text\n');
+        output('one/output.txt');
+        result.stop();
+        vi.advanceTimersByTime(100);
+        expect(lines.log).toEqual([]);
+        expect(closed.toSorted()).toEqual(['builds', 'farmer', 'saves']);
+      }),
+    );
+  });
+
+  it('can start before anything was built', async () => {
+    await withWorkspace(workspace => {
+      // There are no saves yet, so the output directory does not exist.
+      expect(existsSync(join(workspace.root, 'builds'))).toBe(false);
+      const result = run(['--watch'], { root: workspace.root, output: capture().output });
+      try {
+        expect(existsSync(join(workspace.root, 'builds'))).toBe(true);
+      } finally {
+        result.stop();
+      }
+    });
+  });
+
+  it('copies a file the game really writes', async () => {
+    await withWorkspace(async workspace => {
+      workspace.write('one', 'main.ts', GOOD);
+      const { lines, output } = capture();
+      const result = run(['--watch'], { root: workspace.root, output });
+      try {
+        lines.log.length = 0;
+        // The watcher can take a moment to start, so write until the copy is seen.
+        for (let version = 1; version < 200; version++) {
+          if (existsSync(join(workspace.root, 'saves/one/logs/output.txt'))) {
+            break;
+          }
+          writeOutput(workspace, 'one', 'output.txt', `line ${version}\n`);
+          await new Promise(done => setTimeout(done, 100));
+        }
+        expect(readSave(workspace, 'one', 'output.txt')).toMatch(/^line \d+\n$/);
+        expect(lines.log.some(line => line.startsWith('[one] copied output.txt'))).toBe(true);
       } finally {
         result.stop();
       }

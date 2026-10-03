@@ -71,13 +71,13 @@ That is the folder on macOS. On other systems, use the folder the game keeps its
 the-typescript-farmer [options] [saves...]
 ```
 
-| Option          | Meaning                                                                                 |
-| --------------- | --------------------------------------------------------------------------------------- |
-| `[saves...]`    | The saves to build. Every save is built when none are named.                            |
-| `-w, --watch`   | Keep running and rebuild a save whenever one of its files is saved.                     |
-| `--saves <dir>` | The directory that contains the saves. Default: `saves`.                                |
-| `--out <dir>`   | The directory the Python is written to, as `<dir>/<save>/<name>.py`. Default: `builds`. |
-| `-h, --help`    | Show the usage.                                                                         |
+| Option          | Meaning                                                                                                                                                      |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `[saves...]`    | The saves to build. Every save is built when none are named.                                                                                                 |
+| `-w, --watch`   | Keep running and rebuild a save whenever one of its files is saved. Also copies the text files the game writes into the save's `logs` directory (see below). |
+| `--saves <dir>` | The directory that contains the saves. Default: `saves`.                                                                                                     |
+| `--out <dir>`   | The directory the Python is written to, as `<dir>/<save>/<name>.py`. Default: `builds`.                                                                      |
+| `-h, --help`    | Show the usage.                                                                                                                                              |
 
 The command can be started in any of these ways, which are all the same program:
 
@@ -99,6 +99,15 @@ yarn build --saves ~/farm --out ~/farm-python
 The exit code is `0` when everything built, and `1` when something failed, a
 named save doesn't exist, or an option is unknown. In watch mode the process
 keeps running, and a failure only prints a message.
+
+### Reading what the game prints
+
+When your code calls `quick_print()`, the game writes what it prints to an `output.txt` next to the save's code.
+When you use `--watch`, the output directory is watched as well, and every `.txt` file that appears or changes there
+is copied into the save's `logs` directory (`saves/<save>/logs/output.txt`), which is created when needed, so you can
+read it next to your TypeScript, or open it in your editor and watch it update while the game runs. Only files directly
+in a save's directory are copied, and only for the saves being built. A copy is only written when the content is
+different. `saves/*/logs/` is in `.gitignore`, so the copies are never committed, even in a fork that commits its saves.
 
 ### What a build does
 

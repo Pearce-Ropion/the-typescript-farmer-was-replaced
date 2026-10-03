@@ -1,5 +1,5 @@
-import { existsSync, watch } from 'node:fs';
-import { relative, resolve, sep } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, watch, writeFileSync } from 'node:fs';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 
 import { Command, CommanderError } from 'commander';
 
@@ -32,6 +32,9 @@ const defaultDependencies: Dependencies = {
 };
 
 const noStop = () => {};
+
+/** Where the text files of the game are copied to, in a save. It is git-ignored. */
+const LOGS_DIRECTORY = 'logs';
 
 export interface RunContext {
   /** The project directory. Options that are paths are relative to it. */
@@ -175,6 +178,44 @@ export function run(argv: string[], context: RunContext): RunResult {
     }, 50);
   };
 
+  // The game writes text files next to its code (quick_print() writes output.txt). They are copied back into the
+  // logs directory of the save, so they can be read next to the TypeScript.
+  const pendingCopies = new Set<string>();
+  let copyTimer: NodeJS.Timeout | undefined;
+  const scheduleCopy = (save: string, file: string) => {
+    pendingCopies.add(`${save}/${file}`);
+    clearTimeout(copyTimer);
+    copyTimer = setTimeout(() => {
+      for (const entry of pendingCopies) {
+        const [copySave, copyFile] = entry.split('/');
+        copyOutput(copySave, copyFile);
+      }
+      pendingCopies.clear();
+    }, 50);
+  };
+  const copyOutput = (save: string, file: string) => {
+    const from = join(options.outDir, save, file);
+    const to = join(options.savesDir, save, LOGS_DIRECTORY, file);
+    // The file or the save may be gone again by now.
+    if (!existsSync(from) || !existsSync(join(options.savesDir, save))) {
+      return;
+    }
+    try {
+      const content = readFileSync(from);
+      if (existsSync(to) && readFileSync(to).equals(content)) {
+        return;
+      }
+      mkdirSync(dirname(to), { recursive: true });
+      writeFileSync(to, content);
+      output.log(`[${save}] copied ${file} to ${display(to)}`);
+    } catch (error) {
+      output.error(`[${save}] could not copy ${file}: ${(error as Error).message}`);
+    }
+  };
+
+  // The output directory has to exist to be watched, and it only does once something was built into it.
+  mkdirSync(options.outDir, { recursive: true });
+
   const watchers = [
     deps.watch(options.savesDir, filename => {
       // The first part of the path is the save the file belongs to.
@@ -193,12 +234,24 @@ export function run(argv: string[], context: RunContext): RunResult {
         schedule(selectedSaves());
       }
     }),
+    deps.watch(options.outDir, filename => {
+      // Only the text files directly in a save's directory: <save>/<name>.txt
+      const [save, file, ...rest] = (filename ?? '').split(sep);
+      if (
+        file?.endsWith('.txt') &&
+        !rest.length &&
+        (!positionals.length || positionals.includes(save))
+      ) {
+        scheduleCopy(save, file);
+      }
+    }),
   ];
 
   return {
     exitCode: 0,
     stop: () => {
       clearTimeout(timer);
+      clearTimeout(copyTimer);
       watchers.forEach(watcher => watcher.close());
     },
   };
