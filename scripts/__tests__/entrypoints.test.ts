@@ -17,12 +17,12 @@ describe('scripts/build.ts', () => {
     try {
       mkdirSync(join(dir, 'saves/one'), { recursive: true });
       writeFileSync(join(dir, 'saves/one/main.ts'), 'export const a = 1;\n');
-      const args = ['--saves', join(dir, 'saves'), '--out', join(dir, 'builds')];
+      const args = ['--saves', join(dir, 'saves'), '--game', join(dir, 'game')];
 
       const ok = node('scripts/build.ts', args);
       expect(ok.status).toBe(0);
       expect(ok.stdout).toContain('[one] built ok');
-      expect(readdirSync(join(dir, 'builds/one'))).toEqual(['main.py']);
+      expect(readdirSync(join(dir, 'game/Saves/one'))).toEqual(['main.py']);
 
       expect(node('scripts/build.ts', [...args, 'nope']).status).toBe(1);
     } finally {

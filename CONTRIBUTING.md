@@ -65,7 +65,8 @@ is better than Python that behaves differently.
 
 ```
 saves/               your saves, one directory each (git-ignored, except its README.md)
-builds/              the generated Python, one directory per save (git-ignored)
+builds/              the default game directory: the Python goes to builds/Saves/<save>/ (git-ignored)
+logs/                the text files the game writes (output.txt), copied here when watching (git-ignored)
 types/farmer/        the TypeScript declarations of the game's API, imported as 'farmer'
 scripts/
   build.ts           the command (the package's binary); it only starts cli/build-command.ts
