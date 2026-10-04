@@ -1,11 +1,28 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { root as projectRoot } from '../../transpiler/__tests__/helpers.ts';
 import { buildSaves, listSaves, pruneSaves } from '../../transpiler/project.ts';
-import { run } from '../build-command.ts';
-import type { Dependencies } from '../build-command.ts';
+import { run as runCommand } from '../build-command.ts';
+import type { Dependencies, RunContext } from '../build-command.ts';
+
+/**
+ * Runs the command as a debug build, which uses `builds` in the workspace as the game directory, unless the arguments
+ * say where the game is, so that the tests don't depend on where the game is on the computer they run on.
+ */
+const run = (argv: string[], context: RunContext) =>
+  runCommand(argv.includes('--game') ? argv : ['--debug-build', ...argv], context);
 
 interface Workspace {
   root: string;
@@ -54,10 +71,23 @@ describe('building', () => {
       workspace.write('two', 'main.ts', GOOD);
       const { lines, output } = capture();
       expect(run([], { root: workspace.root, output }).exitCode).toBe(0);
-      expect(lines.log).toContain('[one] wrote builds/one/main.py');
-      expect(lines.log).toContain('[two] wrote builds/two/main.py');
+      expect(lines.log).toContain('[one] wrote builds/Saves/one/main.py');
+      expect(lines.log).toContain('[two] wrote builds/Saves/two/main.py');
       expect(lines.log.filter(line => /built ok in \d+ms/.test(line))).toHaveLength(2);
       expect(lines.error).toEqual([]);
+    });
+  });
+
+  it('writes the python to the Saves directory of the game directory', async () => {
+    await withWorkspace(workspace => {
+      workspace.write('Save0', 'main.ts', GOOD);
+      const { lines, output } = capture();
+      expect(run(['--game', 'my-game'], { root: workspace.root, output }).exitCode).toBe(0);
+      expect(lines.log).toContain('[Save0] wrote my-game/Saves/Save0/main.py');
+      expect(readFileSync(join(workspace.root, 'my-game/Saves/Save0/main.py'), 'utf8')).toContain(
+        'a = 1',
+      );
+      expect(existsSync(join(workspace.root, 'builds'))).toBe(false);
     });
   });
 
@@ -68,7 +98,7 @@ describe('building', () => {
       const { lines, output } = capture();
       expect(run(['two'], { root: workspace.root, output }).exitCode).toBe(0);
       expect(lines.log.join('\n')).not.toContain('[one]');
-      expect(lines.log).toContain('[two] wrote builds/two/main.py');
+      expect(lines.log).toContain('[two] wrote builds/Saves/two/main.py');
     });
   });
 
@@ -80,7 +110,7 @@ describe('building', () => {
       expect(run([], { root: workspace.root, output }).exitCode).toBe(1);
       expect(lines.error[0]).toMatch(/\[bad\] error .*main\.ts:1:1: ClassDeclaration/);
       expect(lines.log.some(line => /^\[bad\] built 1 error\(s\) in \d+ms$/.test(line))).toBe(true);
-      expect(lines.log).toContain('[good] wrote builds/good/main.py');
+      expect(lines.log).toContain('[good] wrote builds/Saves/good/main.py');
     });
   });
 
@@ -131,7 +161,7 @@ describe('building', () => {
         '[one] skipped saves/one/main.ts: it imports lib, which has errors',
       );
       expect(lines.warn.join('\n')).toContain(
-        '[one] warning builds/one/lib.py is out of date: its source has errors, so the previous version was kept',
+        '[one] warning builds/Saves/one/lib.py is out of date: its source has errors, so the previous version was kept',
       );
     });
   });
@@ -147,8 +177,8 @@ describe('building', () => {
       rmSync(join(workspace.root, 'saves/gone'), { recursive: true });
       const { lines, output } = capture();
       expect(run([], { root: workspace.root, output }).exitCode).toBe(0);
-      expect(lines.log).toContain('[one] removed builds/one/b.py');
-      expect(lines.log).toContain('removed builds/gone/main.py');
+      expect(lines.log).toContain('[one] removed builds/Saves/one/b.py');
+      expect(lines.log).toContain('removed builds/Saves/gone/main.py');
     });
   });
 
@@ -161,7 +191,164 @@ describe('building', () => {
 
       const { lines, output } = capture();
       run(['one'], { root: workspace.root, output });
-      expect(lines.log.join('\n')).not.toContain('removed builds/gone');
+      expect(lines.log.join('\n')).not.toContain('removed builds/Saves/gone');
+    });
+  });
+});
+
+describe('the default game directory', () => {
+  const MAC_GAME = 'Library/Application Support/com.TheFarmerWasReplaced.TheFarmerWasReplaced';
+
+  /** A home directory with the game's directory of macOS in it, for a pretend macOS. */
+  const withMac = async (
+    directories: string[],
+    test: (workspace: Workspace, environment: Dependencies['environment']) => void,
+  ) =>
+    withWorkspace(workspace => {
+      const homedir = join(workspace.root, 'home');
+      for (const directory of directories) {
+        mkdirSync(join(homedir, MAC_GAME, directory), { recursive: true });
+      }
+      test(workspace, { platform: 'darwin', homedir });
+    });
+
+  it('builds into the directory of the game on this system when --game is not given', async () => {
+    await withMac([''], (workspace, environment) => {
+      workspace.write('Save0', 'main.ts', GOOD);
+      const { lines, output } = capture();
+      const result = runCommand([], {
+        root: workspace.root,
+        output,
+        dependencies: { environment },
+      });
+      const game = join(environment.homedir, MAC_GAME);
+      expect(result.exitCode).toBe(0);
+      expect(lines.log[0]).toBe(`using the game directory ${game}`);
+      expect(readFileSync(join(game, 'Saves/Save0/main.py'), 'utf8')).toContain('a = 1');
+      expect(existsSync(join(workspace.root, 'builds'))).toBe(false);
+    });
+  });
+
+  it('builds into Saves/user when the game keeps its saves there', async () => {
+    await withMac(['Saves/user'], (workspace, environment) => {
+      workspace.write('Save0', 'main.ts', GOOD);
+      runCommand([], {
+        root: workspace.root,
+        output: capture().output,
+        dependencies: { environment },
+      });
+      const game = join(environment.homedir, MAC_GAME);
+      expect(existsSync(join(game, 'Saves/user/Save0/main.py'))).toBe(true);
+      expect(existsSync(join(game, 'Saves/Save0'))).toBe(false);
+    });
+  });
+
+  it('builds into Saves/user for --game too', async () => {
+    await withWorkspace(workspace => {
+      workspace.write('Save0', 'main.ts', GOOD);
+      mkdirSync(join(workspace.root, 'game/Saves/user'), { recursive: true });
+      run(['--game', 'game'], { root: workspace.root, output: capture().output });
+      expect(existsSync(join(workspace.root, 'game/Saves/user/Save0/main.py'))).toBe(true);
+    });
+  });
+
+  it('does not look for the game when --game is given', async () => {
+    await withMac([], (workspace, environment) => {
+      workspace.write('Save0', 'main.ts', GOOD);
+      const { lines, output } = capture();
+      // The game is not where this system keeps it, but --game says where it is.
+      const result = runCommand(['--game', 'elsewhere'], {
+        root: workspace.root,
+        output,
+        dependencies: { environment },
+      });
+      expect(result.exitCode).toBe(0);
+      expect(lines.log.join('\n')).not.toContain('using the game directory');
+      expect(existsSync(join(workspace.root, 'elsewhere/Saves/Save0/main.py'))).toBe(true);
+    });
+  });
+
+  it('fails when the directory of the game is not where it should be', async () => {
+    await withMac([], (workspace, environment) => {
+      workspace.write('Save0', 'main.ts', GOOD);
+      const { lines, output } = capture();
+      const result = runCommand([], {
+        root: workspace.root,
+        output,
+        dependencies: { environment },
+      });
+      expect(result.exitCode).toBe(1);
+      expect(lines.error).toHaveLength(1);
+      expect(lines.error[0]).toMatch(
+        /^error: The game's directory was not found at .*Run the game once.*--game/s,
+      );
+      expect(existsSync(join(environment.homedir, MAC_GAME))).toBe(false);
+    });
+  });
+
+  it('is described in the usage', async () => {
+    await withWorkspace(workspace => {
+      const { lines, output } = capture();
+      runCommand(['--help'], { root: workspace.root, output });
+      expect(lines.log[0]).toContain("default: the game's directory on this operating system");
+    });
+  });
+});
+
+describe('a debug build', () => {
+  const MAC_GAME = 'Library/Application Support/com.TheFarmerWasReplaced.TheFarmerWasReplaced';
+
+  it('forces the output to builds/, even where the game could be found', async () => {
+    await withWorkspace(workspace => {
+      workspace.write('Save0', 'main.ts', GOOD);
+      // The game is where this system keeps it, but a debug build must not touch it.
+      const homedir = join(workspace.root, 'home');
+      mkdirSync(join(homedir, MAC_GAME), { recursive: true });
+      const { lines, output } = capture();
+      const result = runCommand(['--debug-build'], {
+        root: workspace.root,
+        output,
+        dependencies: { environment: { platform: 'darwin', homedir } },
+      });
+      expect(result.exitCode).toBe(0);
+      expect(lines.log).toContain('[Save0] wrote builds/Saves/Save0/main.py');
+      expect(lines.log.join('\n')).not.toContain('using the game directory');
+      expect(existsSync(join(homedir, MAC_GAME, 'Saves'))).toBe(false);
+    });
+  });
+
+  it('works where the game cannot be found', async () => {
+    await withWorkspace(workspace => {
+      workspace.write('Save0', 'main.ts', GOOD);
+      const result = runCommand(['--debug-build'], {
+        root: workspace.root,
+        output: capture().output,
+        dependencies: { environment: { platform: 'freebsd', homedir: workspace.root } },
+      });
+      expect(result.exitCode).toBe(0);
+      expect(existsSync(join(workspace.root, 'builds/Saves/Save0/main.py'))).toBe(true);
+    });
+  });
+
+  it('cannot be combined with --game', async () => {
+    await withWorkspace(workspace => {
+      const { lines, output } = capture();
+      const result = runCommand(['--debug-build', '--game', 'somewhere'], {
+        root: workspace.root,
+        output,
+      });
+      expect(result.exitCode).toBe(1);
+      expect(lines.error[0]).toContain(
+        "option '--debug-build' cannot be used with option '--game <dir>'",
+      );
+    });
+  });
+
+  it('is described in the usage', async () => {
+    await withWorkspace(workspace => {
+      const { lines, output } = capture();
+      runCommand(['--help'], { root: workspace.root, output });
+      expect(lines.log[0]).toContain('--debug-build');
     });
   });
 });
@@ -200,7 +387,7 @@ describe('invalid use', () => {
       expect(lines.log[0]).toContain('Usage: the-typescript-farmer [options] [saves...]');
       expect(lines.log[0]).toContain('--watch');
       expect(lines.log[0]).toContain('--saves <dir>');
-      expect(lines.log[0]).toContain('--out <dir>');
+      expect(lines.log[0]).toContain('--game <dir>');
     });
   });
 
@@ -283,8 +470,9 @@ describe('watching', () => {
     });
     const savesWatcher = [...watchers.entries()].find(([dir]) => dir.endsWith('/saves'))![1];
     const typesWatcher = [...watchers.entries()].find(([dir]) => dir.endsWith('/farmer'))![1];
+    const outputWatcher = [...watchers.entries()].find(([dir]) => dir.endsWith('/builds'))![1];
     built.length = 0;
-    return { result, lines, built, savesWatcher, typesWatcher, watchers };
+    return { result, lines, built, savesWatcher, typesWatcher, outputWatcher, watchers };
   };
 
   it('starts watching after the first build', async () => {
@@ -294,7 +482,7 @@ describe('watching', () => {
         const { result, lines, watchers } = setup(workspace);
         expect(result.exitCode).toBe(0);
         expect(lines.log).toContain('watching saves...');
-        expect(watchers.size).toBe(2);
+        expect(watchers.size).toBe(3);
       });
     });
   });
@@ -400,7 +588,7 @@ describe('watching', () => {
         savesWatcher.listener('two/main.ts');
         vi.advanceTimersByTime(100);
         expect(built).toEqual([]);
-        expect(lines.log).toContain('removed builds/two/main.py');
+        expect(lines.log).toContain('removed builds/Saves/two/main.py');
       });
     });
   });
@@ -430,13 +618,274 @@ describe('watching', () => {
         lines.log.length = 0;
         // The watcher can take a moment to start, so change the file until a rebuild is seen.
         for (let version = 2; version < 200; version++) {
-          if (lines.log.includes('[one] wrote builds/one/main.py')) {
+          if (lines.log.includes('[one] wrote builds/Saves/one/main.py')) {
             break;
           }
           workspace.write('one', 'main.ts', `export const a = ${version};\n`);
           await new Promise(done => setTimeout(done, 100));
         }
-        expect(lines.log).toContain('[one] wrote builds/one/main.py');
+        expect(lines.log).toContain('[one] wrote builds/Saves/one/main.py');
+      } finally {
+        result.stop();
+      }
+    });
+  }, 30_000);
+});
+
+describe('copying the text files of the game', () => {
+  // quick_print() makes the game write output.txt in its directory, which is `builds` by default.
+  const writeGameFile = (workspace: Workspace, file: string, content: string) => {
+    mkdirSync(join(workspace.root, 'builds'), { recursive: true });
+    writeFileSync(join(workspace.root, 'builds', file), content);
+  };
+  const readLog = (workspace: Workspace, file: string) =>
+    readFileSync(join(workspace.root, 'logs', file), 'utf8');
+
+  const watching = (workspace: Workspace, args: string[] = []) => {
+    const listeners = new Map<string, (filename: string | null) => void>();
+    const recursive = new Map<string, boolean>();
+    const closed: string[] = [];
+    const { lines, output } = capture();
+    const result = run(['--watch', ...args], {
+      root: workspace.root,
+      output,
+      dependencies: {
+        watch: (dir, listener, isRecursive) => {
+          const name = dir.split('/').pop()!;
+          listeners.set(name, listener);
+          recursive.set(name, isRecursive);
+          return { close: () => closed.push(name) };
+        },
+      },
+    });
+    lines.log.length = 0;
+    return { result, lines, closed, recursive, game: listeners.get('builds')! };
+  };
+
+  const withTimers = async (test: () => void | Promise<void>) => {
+    vi.useFakeTimers();
+    try {
+      await test();
+    } finally {
+      vi.useRealTimers();
+    }
+  };
+
+  it('watches the game directory without its subdirectories', async () => {
+    await withTimers(() =>
+      withWorkspace(workspace => {
+        workspace.write('one', 'main.ts', GOOD);
+        const { recursive } = watching(workspace);
+        expect(Object.fromEntries(recursive)).toEqual({ saves: true, farmer: true, builds: false });
+      }),
+    );
+  });
+
+  it('copies a text file of the game into the logs directory', async () => {
+    await withTimers(() =>
+      withWorkspace(workspace => {
+        workspace.write('one', 'main.ts', GOOD);
+        const { lines, game } = watching(workspace);
+
+        writeGameFile(workspace, 'output.txt', 'hello\n');
+        game('output.txt');
+        expect(existsSync(join(workspace.root, 'logs/output.txt'))).toBe(false);
+        vi.advanceTimersByTime(50);
+        expect(readLog(workspace, 'output.txt')).toBe('hello\n');
+        expect(lines.log).toEqual(['copied output.txt to logs/output.txt']);
+      }),
+    );
+  });
+
+  it('creates the logs directory and keeps what else is in it', async () => {
+    await withTimers(() =>
+      withWorkspace(workspace => {
+        workspace.write('one', 'main.ts', GOOD);
+        mkdirSync(join(workspace.root, 'logs'));
+        writeFileSync(join(workspace.root, 'logs/kept.txt'), 'kept\n');
+        const { game } = watching(workspace);
+
+        writeGameFile(workspace, 'output.txt', 'new\n');
+        game('output.txt');
+        vi.advanceTimersByTime(50);
+        expect(readLog(workspace, 'kept.txt')).toBe('kept\n');
+        expect(readLog(workspace, 'output.txt')).toBe('new\n');
+      }),
+    );
+  });
+
+  it('copies the new content when the file changes', async () => {
+    await withTimers(() =>
+      withWorkspace(workspace => {
+        workspace.write('one', 'main.ts', GOOD);
+        const { lines, game } = watching(workspace);
+
+        for (const content of ['first\n', 'second\n']) {
+          writeGameFile(workspace, 'output.txt', content);
+          game('output.txt');
+          vi.advanceTimersByTime(50);
+          expect(readLog(workspace, 'output.txt')).toBe(content);
+        }
+        expect(lines.log).toHaveLength(2);
+      }),
+    );
+  });
+
+  it('leaves a copy alone when the content is the same', async () => {
+    await withTimers(() =>
+      withWorkspace(workspace => {
+        workspace.write('one', 'main.ts', GOOD);
+        const { lines, game } = watching(workspace);
+        writeGameFile(workspace, 'output.txt', 'same\n');
+        game('output.txt');
+        vi.advanceTimersByTime(50);
+        const copy = join(workspace.root, 'logs/output.txt');
+        // An old modification time shows that the file is not written again.
+        utimesSync(copy, 1, 1);
+        lines.log.length = 0;
+
+        game('output.txt');
+        vi.advanceTimersByTime(50);
+        expect(lines.log).toEqual([]);
+        expect(statSync(copy).mtimeMs).toBe(1000);
+      }),
+    );
+  });
+
+  it('copies several files in one go and a burst of changes only once', async () => {
+    await withTimers(() =>
+      withWorkspace(workspace => {
+        workspace.write('one', 'main.ts', GOOD);
+        const { lines, game } = watching(workspace);
+
+        writeGameFile(workspace, 'output.txt', 'a\n');
+        writeGameFile(workspace, 'notes.txt', 'b\n');
+        game('output.txt');
+        game('output.txt');
+        vi.advanceTimersByTime(20);
+        game('notes.txt');
+        vi.advanceTimersByTime(49);
+        expect(lines.log).toEqual([]);
+        vi.advanceTimersByTime(1);
+        expect(lines.log.toSorted()).toEqual([
+          'copied notes.txt to logs/notes.txt',
+          'copied output.txt to logs/output.txt',
+        ]);
+      }),
+    );
+  });
+
+  it('ignores files that are not text files', async () => {
+    await withTimers(() =>
+      withWorkspace(workspace => {
+        workspace.write('one', 'main.ts', GOOD);
+        const { lines, game } = watching(workspace);
+
+        writeGameFile(workspace, 'settings.json', '{}');
+        writeGameFile(workspace, 'output.txt.bak', 'old\n');
+        game('settings.json');
+        game('output.txt.bak');
+        game('Saves');
+        game(null);
+        vi.advanceTimersByTime(100);
+        expect(lines.log).toEqual([]);
+        expect(existsSync(join(workspace.root, 'logs'))).toBe(false);
+      }),
+    );
+  });
+
+  it('copies whichever saves are being built', async () => {
+    await withTimers(() =>
+      withWorkspace(workspace => {
+        workspace.write('one', 'main.ts', GOOD);
+        workspace.write('two', 'main.ts', GOOD);
+        const { lines, game } = watching(workspace, ['one']);
+
+        writeGameFile(workspace, 'output.txt', 'text\n');
+        game('output.txt');
+        vi.advanceTimersByTime(50);
+        expect(lines.log).toEqual(['copied output.txt to logs/output.txt']);
+      }),
+    );
+  });
+
+  it('skips a file that is gone', async () => {
+    await withTimers(() =>
+      withWorkspace(workspace => {
+        workspace.write('one', 'main.ts', GOOD);
+        const { lines, game } = watching(workspace);
+
+        game('output.txt');
+        vi.advanceTimersByTime(100);
+        expect(lines.log).toEqual([]);
+        expect(lines.error).toEqual([]);
+      }),
+    );
+  });
+
+  it('reports a file it cannot copy and keeps going', async () => {
+    await withTimers(() =>
+      withWorkspace(workspace => {
+        workspace.write('one', 'main.ts', GOOD);
+        const { lines, game } = watching(workspace);
+
+        writeGameFile(workspace, 'output.txt', 'text\n');
+        // A directory in the way makes writing the copy fail.
+        mkdirSync(join(workspace.root, 'logs/output.txt'), { recursive: true });
+        game('output.txt');
+        vi.advanceTimersByTime(50);
+        expect(lines.error).toHaveLength(1);
+        expect(lines.error[0]).toMatch(/^could not copy output\.txt: /);
+      }),
+    );
+  });
+
+  it('stops watching the game directory and cancels a pending copy', async () => {
+    await withTimers(() =>
+      withWorkspace(workspace => {
+        workspace.write('one', 'main.ts', GOOD);
+        const { result, lines, closed, game } = watching(workspace);
+
+        writeGameFile(workspace, 'output.txt', 'text\n');
+        game('output.txt');
+        result.stop();
+        vi.advanceTimersByTime(100);
+        expect(lines.log).toEqual([]);
+        expect(closed.toSorted()).toEqual(['builds', 'farmer', 'saves']);
+      }),
+    );
+  });
+
+  it('creates the game directory if it does not exist yet', async () => {
+    await withWorkspace(workspace => {
+      // There are no saves yet, so nothing was built into it.
+      expect(existsSync(join(workspace.root, 'builds'))).toBe(false);
+      const result = run(['--watch'], { root: workspace.root, output: capture().output });
+      try {
+        expect(existsSync(join(workspace.root, 'builds'))).toBe(true);
+      } finally {
+        result.stop();
+      }
+    });
+  });
+
+  it('copies a file the game really writes', async () => {
+    await withWorkspace(async workspace => {
+      workspace.write('one', 'main.ts', GOOD);
+      const { lines, output } = capture();
+      const result = run(['--watch'], { root: workspace.root, output });
+      try {
+        lines.log.length = 0;
+        // The watcher can take a moment to start, so write until the copy is seen.
+        for (let version = 1; version < 200; version++) {
+          if (existsSync(join(workspace.root, 'logs/output.txt'))) {
+            break;
+          }
+          writeGameFile(workspace, 'output.txt', `line ${version}\n`);
+          await new Promise(done => setTimeout(done, 100));
+        }
+        expect(readLog(workspace, 'output.txt')).toMatch(/^line \d+\n$/);
+        expect(lines.log.some(line => line.startsWith('copied output.txt'))).toBe(true);
       } finally {
         result.stop();
       }

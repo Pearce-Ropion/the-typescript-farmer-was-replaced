@@ -22,7 +22,7 @@ while (true) {
 becomes
 
 ```python
-# builds/save-1/main.py
+# <the game's directory>/Saves/save-1/main.py
 till()
 while True:
     if can_harvest():
@@ -50,20 +50,34 @@ each other (`import { a } from './other'`) and the game's API (`import { harvest
 yarn build
 ```
 
-Every `saves/<save>/<name>.ts` is written to `builds/<save>/<name>.py`.
+Every `saves/<save>/<name>.ts` is written to the game's directory, as `<game>/Saves/<save>/<name>.py`. Run the game
+once first, so that its directory exists.
 
 ### Putting the code in the game
 
-The game reads its code from its own save directories (`Save0`, `Save1`, ...).
-Name the directory in `saves/` after the game's save and point `--out` at the
-game's saves folder, and the build writes the Python straight into the save:
+The game keeps its data in one directory, with the code of each save in `Saves/Save0`, `Saves/Save1`, ... Name the
+directory in `saves/` after the game's save, and the build writes the Python straight into that save, in
+`<game>/Saves/<save>/`. By default the build looks for the game's directory where the game normally keeps it:
+
+| System                | Where it looks                                                                                                                                                                        |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS                 | `~/Library/Application Support/com.TheFarmerWasReplaced.TheFarmerWasReplaced`                                                                                                         |
+| Windows               | `C:\Users\<you>\AppData\LocalLow\TheFarmerWasReplaced\TheFarmerWasReplaced`                                                                                                           |
+| Linux (Steam, Proton) | `steamapps/compatdata/2060160/pfx/drive_c/users/steamuser/AppData/LocalLow/TheFarmerWasReplaced/TheFarmerWasReplaced` in `~/.local/share/Steam`, or in `~/.steam/debian-installation` |
+
+The directory has to exist, so run the game once first; the build never creates a game directory. If the game is
+somewhere else, or the build says it can't find it, pass the directory yourself with `--game`:
 
 ```sh
-yarn build --out "$HOME/Library/Application Support/com.TheFarmerWasReplaced.TheFarmerWasReplaced/Saves"
+yarn build --game "$HOME/Library/Application Support/com.TheFarmerWasReplaced.TheFarmerWasReplaced"
 ```
 
-That is the folder on macOS. On other systems, use the folder the game keeps its saves in. The game's own
-`__builtins__.py` in a save is never deleted or overwritten.
+To try the build without touching the game, use `--debug-build`. It forces the game directory to `builds/` in this
+project (which is git-ignored), whatever else is set, so the Python is written to `builds/Saves/<save>/`.
+
+On Windows, and on Linux through Proton, the saves are said to be in `Saves/user` and not in `Saves`. The build uses
+`<game>/Saves/user` when that directory exists and `<game>/Saves` otherwise. The game's own `__builtins__.py` in a save
+is never deleted or overwritten.
 
 ## Running it
 
@@ -71,13 +85,14 @@ That is the folder on macOS. On other systems, use the folder the game keeps its
 the-typescript-farmer [options] [saves...]
 ```
 
-| Option          | Meaning                                                                                 |
-| --------------- | --------------------------------------------------------------------------------------- |
-| `[saves...]`    | The saves to build. Every save is built when none are named.                            |
-| `-w, --watch`   | Keep running and rebuild a save whenever one of its files is saved.                     |
-| `--saves <dir>` | The directory that contains the saves. Default: `saves`.                                |
-| `--out <dir>`   | The directory the Python is written to, as `<dir>/<save>/<name>.py`. Default: `builds`. |
-| `-h, --help`    | Show the usage.                                                                         |
+| Option          | Meaning                                                                                                                                                                                                                               |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `[saves...]`    | The saves to build. Every save is built when none are named.                                                                                                                                                                          |
+| `-w, --watch`   | Keep running and rebuild a save whenever one of its files is saved. Also copies the text files the game writes (such as `output.txt`) to `logs/` (see below).                                                                         |
+| `--saves <dir>` | The directory that contains the saves. Default: `saves`.                                                                                                                                                                              |
+| `--game <dir>`  | The game's directory. The Python is written to `<dir>/Saves/<save>/<name>.py`, and the text files the game writes in `<dir>` are copied to `logs/` when watching. Default: the game's directory on this operating system (see above). |
+| `--debug-build` | Use `builds/` in this project as the game directory, to try a build without touching the game. It can't be combined with `--game`.                                                                                                    |
+| `-h, --help`    | Show the usage.                                                                                                                                                                                                                       |
 
 The command can be started in any of these ways, which are all the same program:
 
@@ -93,12 +108,21 @@ Examples:
 ```sh
 yarn build save-1 save-2             # only these two saves
 yarn build:watch save-1               # watch one save
-yarn build --saves ~/farm --out ~/farm-python
+yarn build --saves ~/farm --game ~/farm-game
 ```
 
 The exit code is `0` when everything built, and `1` when something failed, a
 named save doesn't exist, or an option is unknown. In watch mode the process
 keeps running, and a failure only prints a message.
+
+### Reading what the game prints
+
+When your code calls `quick_print()`, the game writes what it prints to an `output.txt` in its directory, next to the
+`Saves` directory and not inside a save. When you use `--watch`, the game directory is watched as well, and every `.txt`
+file that appears or changes directly in it is copied to the `logs` directory of this project (`logs/output.txt`), which
+is created when needed. You can read it next to your TypeScript, or open it in your editor and watch it update while the
+game runs. The game doesn't say which save printed it, so the copy belongs to the project and not to a save. A copy is
+only written when the content is different, and `logs` is in `.gitignore`.
 
 ### What a build does
 

@@ -1,10 +1,14 @@
-import { existsSync, watch } from 'node:fs';
-import { relative, resolve, sep } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, watch, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 
-import { Command, CommanderError } from 'commander';
+import { Command, CommanderError, Option } from 'commander';
 
 import { buildSaves, listSaves, pruneSaves } from '../transpiler/project.ts';
 import type { SavesOptions } from '../transpiler/project.ts';
+
+import { defaultGameDirectory, savesDirectoryOf } from './game-directory.ts';
+import type { Environment } from './game-directory.ts';
 
 export interface Output {
   log: (message: string) => void;
@@ -19,19 +23,35 @@ export interface Dependencies {
   buildSaves: typeof buildSaves;
   listSaves: typeof listSaves;
   pruneSaves: typeof pruneSaves;
-  /** Calls `listener` with the path (relative to `dir`) of every file that changes in `dir`. */
-  watch: (dir: string, listener: (filename: string | null) => void) => { close: () => void };
+  /**
+   * Calls `listener` with the path (relative to `dir`) of every file that changes in `dir`, and in the directories
+   * inside it when `recursive` is true.
+   */
+  watch: (
+    dir: string,
+    listener: (filename: string | null) => void,
+    recursive: boolean,
+  ) => { close: () => void };
+  /** The operating system and home directory, which decide where the game's directory is by default. */
+  environment: Environment;
 }
 
 const defaultDependencies: Dependencies = {
   buildSaves,
   listSaves,
   pruneSaves,
-  watch: (dir, listener) =>
-    watch(dir, { recursive: true }, (_event, filename) => listener(filename)),
+  watch: (dir, listener, recursive) =>
+    watch(dir, { recursive }, (_event, filename) => listener(filename)),
+  environment: { platform: process.platform, homedir: homedir() },
 };
 
 const noStop = () => {};
+
+/** The game directory of a debug build, in the project. It is git-ignored. */
+const DEBUG_GAME_DIRECTORY = 'builds';
+
+/** Where the text files of the game are copied to, in the project. It is git-ignored. */
+const LOGS_DIRECTORY = 'logs';
 
 export interface RunContext {
   /** The project directory. Options that are paths are relative to it. */
@@ -63,7 +83,16 @@ export function run(argv: string[], context: RunContext): RunResult {
     .argument('[saves...]', 'the saves to build (every save by default)')
     .option('-w, --watch', 'rebuild whenever a file changes', false)
     .option('--saves <dir>', 'the directory that contains the saves', 'saves')
-    .option('--out <dir>', 'the directory the Python is written to', 'builds')
+    .option(
+      '--game <dir>',
+      "the game's directory: the Python goes to <dir>/Saves/<save>/ and the text files the game writes in <dir> are copied to logs/ (default: the game's directory on this operating system)",
+    )
+    .addOption(
+      new Option(
+        '--debug-build',
+        'use builds/ as the game directory, to try a build without touching the game',
+      ).conflicts('game'),
+    )
     .exitOverride()
     .configureOutput({
       writeOut: text => output.log(text.trimEnd()),
@@ -78,10 +107,30 @@ export function run(argv: string[], context: RunContext): RunResult {
   }
 
   const positionals: string[] = program.args;
-  const values = program.opts<{ watch: boolean; saves: string; out: string }>();
+  const values = program.opts<{
+    watch: boolean;
+    saves: string;
+    game?: string;
+    debugBuild?: boolean;
+  }>();
+  let gameDir: string;
+  if (values.debugBuild) {
+    gameDir = resolve(root, DEBUG_GAME_DIRECTORY);
+  } else if (values.game === undefined) {
+    // Without --game the game is where it normally is on this operating system.
+    const found = defaultGameDirectory(deps.environment);
+    if ('error' in found) {
+      output.error(`error: ${found.error}`);
+      return { exitCode: 1, stop: noStop };
+    }
+    gameDir = found.directory;
+    output.log(`using the game directory ${gameDir}`);
+  } else {
+    gameDir = resolve(root, values.game);
+  }
   const options: SavesOptions = {
     savesDir: resolve(root, values.saves),
-    outDir: resolve(root, values.out),
+    outDir: savesDirectoryOf(gameDir),
     farmerDir: resolve(root, 'types/farmer'),
   };
 
@@ -175,30 +224,84 @@ export function run(argv: string[], context: RunContext): RunResult {
     }, 50);
   };
 
+  // quick_print() makes the game write output.txt in its directory, one level above the saves. Which save printed
+  // it isn't known, so the text files are copied into one logs directory for the whole project.
+  const pendingCopies = new Set<string>();
+  let copyTimer: NodeJS.Timeout | undefined;
+  const scheduleCopy = (file: string) => {
+    pendingCopies.add(file);
+    clearTimeout(copyTimer);
+    copyTimer = setTimeout(() => {
+      pendingCopies.forEach(copyOutput);
+      pendingCopies.clear();
+    }, 50);
+  };
+  const copyOutput = (file: string) => {
+    const from = join(gameDir, file);
+    const to = join(root, LOGS_DIRECTORY, file);
+    // The file may be gone again by now.
+    if (!existsSync(from)) {
+      return;
+    }
+    try {
+      const content = readFileSync(from);
+      if (existsSync(to) && readFileSync(to).equals(content)) {
+        return;
+      }
+      mkdirSync(dirname(to), { recursive: true });
+      writeFileSync(to, content);
+      output.log(`copied ${file} to ${display(to)}`);
+    } catch (error) {
+      output.error(`could not copy ${file}: ${(error as Error).message}`);
+    }
+  };
+
+  // The game's directory has to exist to be watched, and it only does once something was built into it.
+  mkdirSync(gameDir, { recursive: true });
+
   const watchers = [
-    deps.watch(options.savesDir, filename => {
-      // The first part of the path is the save the file belongs to.
-      const [save, ...rest] = (filename ?? '').split(sep);
-      if (
-        rest.length &&
-        filename?.endsWith('.ts') &&
-        (!positionals.length || positionals.includes(save))
-      ) {
-        schedule([save]);
-      }
-    }),
+    deps.watch(
+      options.savesDir,
+      filename => {
+        // The first part of the path is the save the file belongs to.
+        const [save, ...rest] = (filename ?? '').split(sep);
+        if (
+          rest.length &&
+          filename?.endsWith('.ts') &&
+          (!positionals.length || positionals.includes(save))
+        ) {
+          schedule([save]);
+        }
+      },
+      true,
+    ),
     // The game's API declarations decide how names are translated, so changes to them affect every save.
-    deps.watch(options.farmerDir, filename => {
-      if (filename?.endsWith('.ts')) {
-        schedule(selectedSaves());
-      }
-    }),
+    deps.watch(
+      options.farmerDir,
+      filename => {
+        if (filename?.endsWith('.ts')) {
+          schedule(selectedSaves());
+        }
+      },
+      true,
+    ),
+    // Only the text files directly in the game's directory, which is why it isn't watched recursively.
+    deps.watch(
+      gameDir,
+      filename => {
+        if (filename?.endsWith('.txt')) {
+          scheduleCopy(filename);
+        }
+      },
+      false,
+    ),
   ];
 
   return {
     exitCode: 0,
     stop: () => {
       clearTimeout(timer);
+      clearTimeout(copyTimer);
       watchers.forEach(watcher => watcher.close());
     },
   };
