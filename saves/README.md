@@ -15,8 +15,8 @@ saves/
 - Keep a save's files together in its directory. Files can import each other as `./name`, and the game's API as
   `'farmer'`, and nothing else.
 - Build with `yarn build` (every save), `yarn build Save0` (one save) or `yarn build:watch` (rebuild on every change).
-  The Python is written to `builds/Saves/<save>/<file>.py`, or to the `Saves` directory of whatever game directory
-  `--game` points at.
+  The Python is written to the `Saves/<save>/` directory of the game, wherever the game is on your system (see the
+  main README).
 - Your saves belong to your own fork of the repository. Everything in this directory except this file is ignored by
   git, so to version control your saves in your fork, remove the `saves/*` line from `.gitignore` and delete the "Saves
   directory" step of the CI workflow (`.github/workflows/ci.yml`), which fails when a save is committed.

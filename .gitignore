@@ -9,7 +9,7 @@
 # build artifacts that should be gitignored
 node_modules
 
-# Generated Python output of the build script
+# The game directory of a debug build (--debug-build), instead of the real game
 builds
 
 # Your saves' TypeScript is ignored by default. Remove or comment out the next line

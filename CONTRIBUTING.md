@@ -65,13 +65,14 @@ is better than Python that behaves differently.
 
 ```
 saves/               your saves, one directory each (git-ignored, except its README.md)
-builds/              the default game directory: the Python goes to builds/Saves/<save>/ (git-ignored)
+builds/              where --debug-build writes, to try the build without the game (git-ignored)
 logs/                the text files the game writes (output.txt), copied here when watching (git-ignored)
 types/farmer/        the TypeScript declarations of the game's API, imported as 'farmer'
 scripts/
   build.ts           the command (the package's binary); it only starts cli/build-command.ts
   with-saves.ts      runs oxlint or oxfmt on the project and on the saves; it only starts cli/with-saves-command.ts
   cli/               the commands themselves (arguments, output, watching)
+    game-directory.ts  where the game keeps its data on each operating system, and its Saves directory
   transpiler/        the transpiler
     transpile.ts       TypeScript AST -> Python AST (the bulk of the work)
     py.ts              Python AST builders, the whitelist check and printing

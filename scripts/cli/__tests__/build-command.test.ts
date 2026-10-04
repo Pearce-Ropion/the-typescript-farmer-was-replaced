@@ -14,8 +14,15 @@ import { join } from 'node:path';
 
 import { root as projectRoot } from '../../transpiler/__tests__/helpers.ts';
 import { buildSaves, listSaves, pruneSaves } from '../../transpiler/project.ts';
-import { run } from '../build-command.ts';
-import type { Dependencies } from '../build-command.ts';
+import { run as runCommand } from '../build-command.ts';
+import type { Dependencies, RunContext } from '../build-command.ts';
+
+/**
+ * Runs the command as a debug build, which uses `builds` in the workspace as the game directory, unless the arguments
+ * say where the game is, so that the tests don't depend on where the game is on the computer they run on.
+ */
+const run = (argv: string[], context: RunContext) =>
+  runCommand(argv.includes('--game') ? argv : ['--debug-build', ...argv], context);
 
 interface Workspace {
   root: string;
@@ -185,6 +192,163 @@ describe('building', () => {
       const { lines, output } = capture();
       run(['one'], { root: workspace.root, output });
       expect(lines.log.join('\n')).not.toContain('removed builds/Saves/gone');
+    });
+  });
+});
+
+describe('the default game directory', () => {
+  const MAC_GAME = 'Library/Application Support/com.TheFarmerWasReplaced.TheFarmerWasReplaced';
+
+  /** A home directory with the game's directory of macOS in it, for a pretend macOS. */
+  const withMac = async (
+    directories: string[],
+    test: (workspace: Workspace, environment: Dependencies['environment']) => void,
+  ) =>
+    withWorkspace(workspace => {
+      const homedir = join(workspace.root, 'home');
+      for (const directory of directories) {
+        mkdirSync(join(homedir, MAC_GAME, directory), { recursive: true });
+      }
+      test(workspace, { platform: 'darwin', homedir });
+    });
+
+  it('builds into the directory of the game on this system when --game is not given', async () => {
+    await withMac([''], (workspace, environment) => {
+      workspace.write('Save0', 'main.ts', GOOD);
+      const { lines, output } = capture();
+      const result = runCommand([], {
+        root: workspace.root,
+        output,
+        dependencies: { environment },
+      });
+      const game = join(environment.homedir, MAC_GAME);
+      expect(result.exitCode).toBe(0);
+      expect(lines.log[0]).toBe(`using the game directory ${game}`);
+      expect(readFileSync(join(game, 'Saves/Save0/main.py'), 'utf8')).toContain('a = 1');
+      expect(existsSync(join(workspace.root, 'builds'))).toBe(false);
+    });
+  });
+
+  it('builds into Saves/user when the game keeps its saves there', async () => {
+    await withMac(['Saves/user'], (workspace, environment) => {
+      workspace.write('Save0', 'main.ts', GOOD);
+      runCommand([], {
+        root: workspace.root,
+        output: capture().output,
+        dependencies: { environment },
+      });
+      const game = join(environment.homedir, MAC_GAME);
+      expect(existsSync(join(game, 'Saves/user/Save0/main.py'))).toBe(true);
+      expect(existsSync(join(game, 'Saves/Save0'))).toBe(false);
+    });
+  });
+
+  it('builds into Saves/user for --game too', async () => {
+    await withWorkspace(workspace => {
+      workspace.write('Save0', 'main.ts', GOOD);
+      mkdirSync(join(workspace.root, 'game/Saves/user'), { recursive: true });
+      run(['--game', 'game'], { root: workspace.root, output: capture().output });
+      expect(existsSync(join(workspace.root, 'game/Saves/user/Save0/main.py'))).toBe(true);
+    });
+  });
+
+  it('does not look for the game when --game is given', async () => {
+    await withMac([], (workspace, environment) => {
+      workspace.write('Save0', 'main.ts', GOOD);
+      const { lines, output } = capture();
+      // The game is not where this system keeps it, but --game says where it is.
+      const result = runCommand(['--game', 'elsewhere'], {
+        root: workspace.root,
+        output,
+        dependencies: { environment },
+      });
+      expect(result.exitCode).toBe(0);
+      expect(lines.log.join('\n')).not.toContain('using the game directory');
+      expect(existsSync(join(workspace.root, 'elsewhere/Saves/Save0/main.py'))).toBe(true);
+    });
+  });
+
+  it('fails when the directory of the game is not where it should be', async () => {
+    await withMac([], (workspace, environment) => {
+      workspace.write('Save0', 'main.ts', GOOD);
+      const { lines, output } = capture();
+      const result = runCommand([], {
+        root: workspace.root,
+        output,
+        dependencies: { environment },
+      });
+      expect(result.exitCode).toBe(1);
+      expect(lines.error).toHaveLength(1);
+      expect(lines.error[0]).toMatch(
+        /^error: The game's directory was not found at .*Run the game once.*--game/s,
+      );
+      expect(existsSync(join(environment.homedir, MAC_GAME))).toBe(false);
+    });
+  });
+
+  it('is described in the usage', async () => {
+    await withWorkspace(workspace => {
+      const { lines, output } = capture();
+      runCommand(['--help'], { root: workspace.root, output });
+      expect(lines.log[0]).toContain("default: the game's directory on this operating system");
+    });
+  });
+});
+
+describe('a debug build', () => {
+  const MAC_GAME = 'Library/Application Support/com.TheFarmerWasReplaced.TheFarmerWasReplaced';
+
+  it('forces the output to builds/, even where the game could be found', async () => {
+    await withWorkspace(workspace => {
+      workspace.write('Save0', 'main.ts', GOOD);
+      // The game is where this system keeps it, but a debug build must not touch it.
+      const homedir = join(workspace.root, 'home');
+      mkdirSync(join(homedir, MAC_GAME), { recursive: true });
+      const { lines, output } = capture();
+      const result = runCommand(['--debug-build'], {
+        root: workspace.root,
+        output,
+        dependencies: { environment: { platform: 'darwin', homedir } },
+      });
+      expect(result.exitCode).toBe(0);
+      expect(lines.log).toContain('[Save0] wrote builds/Saves/Save0/main.py');
+      expect(lines.log.join('\n')).not.toContain('using the game directory');
+      expect(existsSync(join(homedir, MAC_GAME, 'Saves'))).toBe(false);
+    });
+  });
+
+  it('works where the game cannot be found', async () => {
+    await withWorkspace(workspace => {
+      workspace.write('Save0', 'main.ts', GOOD);
+      const result = runCommand(['--debug-build'], {
+        root: workspace.root,
+        output: capture().output,
+        dependencies: { environment: { platform: 'freebsd', homedir: workspace.root } },
+      });
+      expect(result.exitCode).toBe(0);
+      expect(existsSync(join(workspace.root, 'builds/Saves/Save0/main.py'))).toBe(true);
+    });
+  });
+
+  it('cannot be combined with --game', async () => {
+    await withWorkspace(workspace => {
+      const { lines, output } = capture();
+      const result = runCommand(['--debug-build', '--game', 'somewhere'], {
+        root: workspace.root,
+        output,
+      });
+      expect(result.exitCode).toBe(1);
+      expect(lines.error[0]).toContain(
+        "option '--debug-build' cannot be used with option '--game <dir>'",
+      );
+    });
+  });
+
+  it('is described in the usage', async () => {
+    await withWorkspace(workspace => {
+      const { lines, output } = capture();
+      runCommand(['--help'], { root: workspace.root, output });
+      expect(lines.log[0]).toContain('--debug-build');
     });
   });
 });

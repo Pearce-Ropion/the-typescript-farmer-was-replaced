@@ -1,10 +1,14 @@
 import { existsSync, mkdirSync, readFileSync, watch, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 
-import { Command, CommanderError } from 'commander';
+import { Command, CommanderError, Option } from 'commander';
 
 import { buildSaves, listSaves, pruneSaves } from '../transpiler/project.ts';
 import type { SavesOptions } from '../transpiler/project.ts';
+
+import { defaultGameDirectory, savesDirectoryOf } from './game-directory.ts';
+import type { Environment } from './game-directory.ts';
 
 export interface Output {
   log: (message: string) => void;
@@ -28,6 +32,8 @@ export interface Dependencies {
     listener: (filename: string | null) => void,
     recursive: boolean,
   ) => { close: () => void };
+  /** The operating system and home directory, which decide where the game's directory is by default. */
+  environment: Environment;
 }
 
 const defaultDependencies: Dependencies = {
@@ -36,15 +42,16 @@ const defaultDependencies: Dependencies = {
   pruneSaves,
   watch: (dir, listener, recursive) =>
     watch(dir, { recursive }, (_event, filename) => listener(filename)),
+  environment: { platform: process.platform, homedir: homedir() },
 };
 
 const noStop = () => {};
 
+/** The game directory of a debug build, in the project. It is git-ignored. */
+const DEBUG_GAME_DIRECTORY = 'builds';
+
 /** Where the text files of the game are copied to, in the project. It is git-ignored. */
 const LOGS_DIRECTORY = 'logs';
-
-/** The directory of the game that holds the code of the saves. */
-const GAME_SAVES_DIRECTORY = 'Saves';
 
 export interface RunContext {
   /** The project directory. Options that are paths are relative to it. */
@@ -78,8 +85,13 @@ export function run(argv: string[], context: RunContext): RunResult {
     .option('--saves <dir>', 'the directory that contains the saves', 'saves')
     .option(
       '--game <dir>',
-      "the game's directory: the Python goes to <dir>/Saves/<save>/ and the text files the game writes in <dir> are copied to logs/",
-      'builds',
+      "the game's directory: the Python goes to <dir>/Saves/<save>/ and the text files the game writes in <dir> are copied to logs/ (default: the game's directory on this operating system)",
+    )
+    .addOption(
+      new Option(
+        '--debug-build',
+        'use builds/ as the game directory, to try a build without touching the game',
+      ).conflicts('game'),
     )
     .exitOverride()
     .configureOutput({
@@ -95,11 +107,30 @@ export function run(argv: string[], context: RunContext): RunResult {
   }
 
   const positionals: string[] = program.args;
-  const values = program.opts<{ watch: boolean; saves: string; game: string }>();
-  const gameDir = resolve(root, values.game);
+  const values = program.opts<{
+    watch: boolean;
+    saves: string;
+    game?: string;
+    debugBuild?: boolean;
+  }>();
+  let gameDir: string;
+  if (values.debugBuild) {
+    gameDir = resolve(root, DEBUG_GAME_DIRECTORY);
+  } else if (values.game === undefined) {
+    // Without --game the game is where it normally is on this operating system.
+    const found = defaultGameDirectory(deps.environment);
+    if ('error' in found) {
+      output.error(`error: ${found.error}`);
+      return { exitCode: 1, stop: noStop };
+    }
+    gameDir = found.directory;
+    output.log(`using the game directory ${gameDir}`);
+  } else {
+    gameDir = resolve(root, values.game);
+  }
   const options: SavesOptions = {
     savesDir: resolve(root, values.saves),
-    outDir: join(gameDir, GAME_SAVES_DIRECTORY),
+    outDir: savesDirectoryOf(gameDir),
     farmerDir: resolve(root, 'types/farmer'),
   };
 
